@@ -1,5 +1,9 @@
+import 'dart:async';
+
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -11,7 +15,13 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  CameraController? _cameraController;
+  List<CameraDescription> _availableCameras = [];
+  bool _isPermissionGranted = false;
   bool _isCapturing = false;
+  bool _isRearCameraSelected = true;
+  bool _isInitializingCamera = false;
+  String? _cameraError;
 
   @override
   void initState() {
@@ -28,12 +38,217 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
       curve: Curves.easeInOut,
     ));
     _pulseController.repeat(reverse: true);
+    _initializeCamera();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _cameraController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeCamera() async {
+    setState(() {
+      _isInitializingCamera = true;
+      _cameraError = null;
+    });
+
+    try {
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        setState(() {
+          _isPermissionGranted = false;
+          _isInitializingCamera = false;
+        });
+        return;
+      }
+
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        setState(() {
+          _cameraError = 'No camera found on this device.';
+          _isInitializingCamera = false;
+        });
+        return;
+      }
+
+      _availableCameras = cameras;
+      await _startCamera();
+      setState(() {
+        _isPermissionGranted = true;
+        _isInitializingCamera = false;
+      });
+    } catch (error) {
+      setState(() {
+        _cameraError = 'Failed to initialize camera: $error';
+        _isInitializingCamera = false;
+      });
+    }
+  }
+
+  Future<void> _startCamera() async {
+    final camera = _selectCamera();
+    if (camera == null) {
+      setState(() {
+        _cameraError = 'Unable to access camera.';
+      });
+      return;
+    }
+    await _cameraController?.dispose();
+    _cameraController = CameraController(
+      camera,
+      ResolutionPreset.high,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.jpeg,
+    );
+    await _cameraController!.initialize();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  CameraDescription? _selectCamera() {
+    if (_availableCameras.isEmpty) return null;
+
+    final preferredDirection = _isRearCameraSelected ? CameraLensDirection.back : CameraLensDirection.front;
+    try {
+      return _availableCameras.firstWhere((camera) => camera.lensDirection == preferredDirection);
+    } catch (_) {
+      return _availableCameras.first;
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    if (_availableCameras.length < 2) return;
+    setState(() {
+      _isRearCameraSelected = !_isRearCameraSelected;
+      _isInitializingCamera = true;
+    });
+    await _startCamera();
+    setState(() {
+      _isInitializingCamera = false;
+    });
+  }
+
+  Future<void> _capturePhoto() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    setState(() {
+      _isCapturing = true;
+    });
+    try {
+      final XFile photo = await _cameraController!.takePicture();
+      // TODO: send the captured image to backend AI analysis
+      if (!mounted) return;
+      context.go('/results', extra: {'imagePath': photo.path});
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to capture image: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCapturing = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildCameraPreview() {
+    if (!_isPermissionGranted) {
+      return _buildPermissionView();
+    }
+
+    if (_isInitializingCamera) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      );
+    }
+
+    if (_cameraError != null) {
+      return Center(
+        child: Text(
+          _cameraError!,
+          style: const TextStyle(color: Colors.white70),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      );
+    }
+
+    return CameraPreview(_cameraController!);
+  }
+
+  Widget _buildPermissionView() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF1F1F1F),
+            Color(0xFF2F2F2F),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.camera_alt, size: 80, color: Colors.white54),
+              const SizedBox(height: 16),
+              const Text(
+                'Camera Permission Needed',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'SnapFix needs camera access to analyze problems.\nPlease grant permission to continue.',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () async {
+                  final status = await Permission.camera.request();
+                  if (status.isGranted) {
+                    _initializeCamera();
+                  } else if (status.isPermanentlyDenied) {
+                    await openAppSettings();
+                  } else {
+                    setState(() {});
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black87,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Grant Permission'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -42,293 +257,212 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Camera preview placeholder
-          Container(
-            width: double.infinity,
-            height: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.grey[900]!,
-                  Colors.grey[800]!,
-                ],
-              ),
-            ),
-            child: const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.camera_alt,
-                    size: 80,
-                    color: Colors.white54,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Camera Preview',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 18,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Point your camera at the problem',
-                    style: TextStyle(
-                      color: Colors.white38,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Top controls
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      GestureDetector(
-                        onTap: () => context.pop(),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'SnapFix',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.flash_off,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                ],
-              ),
-            ),
-          ),
-
-          // Center focus indicator
-          Center(
-            child: AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: Container(
-                    width: 200,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.8),
-                        width: 2,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Stack(
-                      children: [
-                        // Corner indicators
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 8,
-                          left: 8,
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 8,
-                          right: 8,
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // Bottom controls
-          SafeArea(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Gallery preview
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white.withOpacity(0.3)),
-                          ),
-                          child: const Icon(
-                            Icons.image,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                        const Spacer(),
-                        // Capture button
-                        GestureDetector(
-                          onTap: _capturePhoto,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            width: _isCapturing ? 60 : 80,
-                            height: _isCapturing ? 60 : 80,
-                            decoration: BoxDecoration(
-                              color: _isCapturing ? Colors.red : Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 4,
-                              ),
-                            ),
-                            child: _isCapturing
-                                ? const Icon(
-                                    Icons.stop,
-                                    color: Colors.white,
-                                    size: 24,
-                                  )
-                                : const Icon(
-                                    Icons.camera_alt,
-                                    color: Colors.black,
-                                    size: 32,
-                                  ),
-                          ),
-                        ),
-                        const Spacer(),
-                        // Switch camera
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(25),
-                          ),
-                          child: const Icon(
-                            Icons.flip_camera_ios,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Instructions
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'Position the problem in the frame and tap to capture',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          Positioned.fill(child: _buildCameraPreview()),
+          _buildGradientOverlay(),
+          _buildTopControls(context),
+          if (_isPermissionGranted && _cameraController != null && _cameraController!.value.isInitialized)
+            _buildFocusIndicator(),
+          _buildBottomControls(context),
         ],
       ),
     );
   }
 
-  void _capturePhoto() {
-    setState(() {
-      _isCapturing = true;
-    });
+  Widget _buildGradientOverlay() {
+    return Positioned.fill(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.black54,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-    // Simulate photo capture
-    Future.delayed(const Duration(milliseconds: 500), () {
-      setState(() {
-        _isCapturing = false;
-      });
-      // Navigate to results screen
-      context.go('/results');
-    });
+  Widget _buildTopControls(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildIconButton(
+                  icon: Icons.arrow_back,
+                  onTap: () => context.pop(),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'SnapFix',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                _buildIconButton(
+                  icon: Icons.flash_off,
+                  onTap: () {},
+                ),
+              ],
+            ),
+            const Spacer(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFocusIndicator() {
+    return Center(
+      child: AnimatedBuilder(
+        animation: _pulseAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _pulseAnimation.value,
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.8),
+                  width: 2,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Stack(
+                children: [
+                  _buildCornerIndicator(alignment: Alignment.topLeft),
+                  _buildCornerIndicator(alignment: Alignment.topRight),
+                  _buildCornerIndicator(alignment: Alignment.bottomLeft),
+                  _buildCornerIndicator(alignment: Alignment.bottomRight),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCornerIndicator({required Alignment alignment}) {
+    return Align(
+      alignment: alignment,
+      child: Container(
+        width: 30,
+        height: 30,
+        margin: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomControls(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildIconButton(
+                    icon: Icons.image,
+                    onTap: () {},
+                    shape: BoxShape.rectangle,
+                  ),
+                  GestureDetector(
+                    onTap: _isCapturing ? null : _capturePhoto,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: _isCapturing ? 60 : 80,
+                      height: _isCapturing ? 60 : 80,
+                      decoration: BoxDecoration(
+                        color: _isCapturing ? Colors.red : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 4,
+                        ),
+                      ),
+                      child: Icon(
+                        _isCapturing ? Icons.stop : Icons.camera_alt,
+                        color: _isCapturing ? Colors.white : Colors.black,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                  _buildIconButton(
+                    icon: Icons.flip_camera_ios,
+                    onTap: _switchCamera,
+                    shape: BoxShape.circle,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Position the problem in the frame and tap to capture',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback? onTap,
+    BoxShape shape = BoxShape.rectangle,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: shape == BoxShape.circle ? 50 : 48,
+        height: shape == BoxShape.circle ? 50 : 48,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.5),
+          borderRadius: shape == BoxShape.rectangle ? BorderRadius.circular(12) : null,
+          shape: shape,
+          border: shape == BoxShape.rectangle ? Border.all(color: Colors.white24) : null,
+        ),
+        child: Icon(
+          icon,
+          color: Colors.white,
+          size: 24,
+        ),
+      ),
+    );
   }
 }

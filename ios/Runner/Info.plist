@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>SnapFix uses the camera to capture problems you want to fix.</string>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>SnapFix sends helpful reminders about your repair progress.</string>
 </dict>
 </plist>

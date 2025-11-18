@@ -1,7 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../services/auth_service.dart';
+import '../services/api_client.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -16,9 +19,11 @@ class _RegisterPageState extends State<RegisterPage> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreeToTerms = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -163,58 +168,50 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Heading
-          Text(
-            'Create Account',
-            style: GoogleFonts.inter(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: Colors.grey[900],
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Create Account',
+              style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey[900],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Join SnapFix and start fixing problems',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: Colors.grey[600],
+            const SizedBox(height: 8),
+            Text(
+              'Join SnapFix and start fixing problems',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Colors.grey[600],
+              ),
             ),
-          ),
-          const SizedBox(height: 32),
-          // Full Name Input
-          _buildFullNameInput(),
-          const SizedBox(height: 20),
-          // Email Input
-          _buildEmailInput(),
-          const SizedBox(height: 20),
-          // Phone Number Input
-          _buildPhoneInput(),
-          const SizedBox(height: 20),
-          // Password Input
-          _buildPasswordInput(),
-          const SizedBox(height: 20),
-          // Confirm Password Input
-          _buildConfirmPasswordInput(),
-          const SizedBox(height: 24),
-          // Terms and Conditions Checkbox
-          _buildTermsCheckbox(context),
-          const SizedBox(height: 24),
-          // Create Account Button
-          _buildCreateAccountButton(context),
-          const SizedBox(height: 24),
-          // Separator
-          _buildSeparator(),
-          const SizedBox(height: 24),
-          // Social Login Buttons
-          _buildSocialSignupButtons(context),
-          const SizedBox(height: 24),
-          // Login Link
-          _buildLoginLink(context),
-        ],
+            const SizedBox(height: 32),
+            _buildFullNameInput(),
+            const SizedBox(height: 20),
+            _buildEmailInput(),
+            const SizedBox(height: 20),
+            _buildPhoneInput(),
+            const SizedBox(height: 20),
+            _buildPasswordInput(),
+            const SizedBox(height: 20),
+            _buildConfirmPasswordInput(),
+            const SizedBox(height: 24),
+            _buildTermsCheckbox(context),
+            const SizedBox(height: 24),
+            _buildCreateAccountButton(context),
+            const SizedBox(height: 24),
+            _buildSeparator(),
+            const SizedBox(height: 24),
+            _buildSocialSignupButtons(context),
+            const SizedBox(height: 24),
+            _buildLoginLink(context),
+          ],
+        ),
       ),
     );
   }
@@ -242,9 +239,15 @@ class _RegisterPageState extends State<RegisterPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _fullNameController,
           keyboardType: TextInputType.name,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Please enter your name';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             hintText: 'Enter your full name',
             hintStyle: GoogleFonts.inter(
@@ -307,9 +310,18 @@ class _RegisterPageState extends State<RegisterPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Please enter your email';
+            }
+            if (!RegExp(r'^\\S+@\\S+\\.\\S+$').hasMatch(value.trim())) {
+              return 'Enter a valid email';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             hintText: 'Enter your email',
             hintStyle: GoogleFonts.inter(
@@ -372,9 +384,15 @@ class _RegisterPageState extends State<RegisterPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Enter your phone number';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             hintText: 'Enter your phone number',
             hintStyle: GoogleFonts.inter(
@@ -438,11 +456,17 @@ class _RegisterPageState extends State<RegisterPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _passwordController,
           obscureText: _obscurePassword,
           onChanged: (value) {
             setState(() {});
+          },
+          validator: (value) {
+            if (value == null || value.length < 6) {
+              return 'Password must be at least 6 characters';
+            }
+            return null;
           },
           decoration: InputDecoration(
             hintText: 'Create a password',
@@ -494,11 +518,11 @@ class _RegisterPageState extends State<RegisterPage> {
         if (_passwordController.text.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
-            'Password strength',
+            'Password strength: ${_getPasswordStrength(_passwordController.text)}',
             style: GoogleFonts.inter(
               fontSize: 12,
-              fontWeight: FontWeight.w400,
-              color: Colors.grey[500],
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
             ),
           ),
         ],
@@ -529,9 +553,18 @@ class _RegisterPageState extends State<RegisterPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _confirmPasswordController,
           obscureText: _obscureConfirmPassword,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Confirm your password';
+            }
+            if (value != _passwordController.text) {
+              return 'Passwords do not match';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             hintText: 'Confirm your password',
             hintStyle: GoogleFonts.inter(
@@ -669,12 +702,7 @@ class _RegisterPageState extends State<RegisterPage> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _agreeToTerms
-            ? () {
-                // Handle registration
-                context.go('/');
-              }
-            : null,
+        onPressed: _agreeToTerms && !_isLoading ? () => _handleRegister(context) : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6366F1),
           disabledBackgroundColor: Colors.grey[300],
@@ -684,25 +712,34 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
           elevation: 0,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Create Account',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+        child: _isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Create Account',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.arrow_forward,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(
-              Icons.arrow_forward,
-              color: Colors.white,
-              size: 20,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -871,6 +908,50 @@ class _RegisterPageState extends State<RegisterPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleRegister(BuildContext context) async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) {
+      return;
+    }
+    if (!_agreeToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please accept the terms to continue')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await AuthService.instance.register(
+        fullName: _fullNameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Account created successfully!')),
+      );
+      context.go('/');
+    } on ApiException catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Registration failed: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 }
 

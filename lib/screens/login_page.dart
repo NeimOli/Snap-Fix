@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/auth_service.dart';
+import '../services/api_client.dart';
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -12,8 +15,10 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
   bool _rememberMe = false;
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -147,55 +152,50 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Heading
-          Text(
-            'Welcome Back!',
-            style: GoogleFonts.inter(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: Colors.grey[900],
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Welcome Back!',
+              style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey[900],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Login to continue fixing problems',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: Colors.grey[600],
+            const SizedBox(height: 8),
+            Text(
+              'Login to continue fixing problems',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Colors.grey[600],
+              ),
             ),
-          ),
-          const SizedBox(height: 32),
-          // Email Input
-          _buildEmailInput(),
-          const SizedBox(height: 24),
-          // Password Input
-          _buildPasswordInput(),
-          const SizedBox(height: 16),
-          // Remember me and Forgot Password
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildRememberMe(),
-              _buildForgotPassword(),
-            ],
-          ),
-          const SizedBox(height: 32),
-          // Login Button
-          _buildLoginButton(context),
-          const SizedBox(height: 24),
-          // Separator
-          _buildSeparator(),
-          const SizedBox(height: 24),
-          // Social Login Buttons
-          _buildSocialLoginButtons(context),
-          const SizedBox(height: 24),
-          // Sign Up Link
-          _buildSignUpLink(context),
-        ],
+            const SizedBox(height: 32),
+            _buildEmailInput(),
+            const SizedBox(height: 24),
+            _buildPasswordInput(),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildRememberMe(),
+                _buildForgotPassword(),
+              ],
+            ),
+            const SizedBox(height: 32),
+            _buildLoginButton(context),
+            const SizedBox(height: 24),
+            _buildSeparator(),
+            const SizedBox(height: 24),
+            _buildSocialLoginButtons(context),
+            const SizedBox(height: 24),
+            _buildSignUpLink(context),
+          ],
+        ),
       ),
     );
   }
@@ -223,9 +223,18 @@ class _LoginPageState extends State<LoginPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please enter your email';
+            }
+            if (!RegExp(r'^\\S+@\\S+\\.\\S+$').hasMatch(value)) {
+              return 'Please enter a valid email';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             hintText: 'Enter your email',
             hintStyle: GoogleFonts.inter(
@@ -288,9 +297,15 @@ class _LoginPageState extends State<LoginPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _passwordController,
           obscureText: _obscurePassword,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please enter your password';
+            }
+            return null;
+          },
           decoration: InputDecoration(
             hintText: 'Enter your password',
             hintStyle: GoogleFonts.inter(
@@ -399,10 +414,7 @@ class _LoginPageState extends State<LoginPage> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: () {
-          // Handle login
-          context.go('/');
-        },
+        onPressed: _isLoading ? null : () => _handleLogin(context),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6366F1),
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -411,25 +423,34 @@ class _LoginPageState extends State<LoginPage> {
           ),
           elevation: 0,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Login',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+        child: _isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Login',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.arrow_forward,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(
-              Icons.arrow_forward,
-              color: Colors.white,
-              size: 20,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -598,6 +619,41 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
     );
+  }
+  Future<void> _handleLogin(BuildContext context) async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await AuthService.instance.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Welcome back!')),
+      );
+      context.go('/');
+    } on ApiException catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 }
 
