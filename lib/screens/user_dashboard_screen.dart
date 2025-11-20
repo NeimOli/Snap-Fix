@@ -1,13 +1,98 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+import '../core/theme_controller.dart';
+import '../models/user.dart';
+import '../services/auth_service.dart';
+
+class UserDashboardScreen extends StatefulWidget {
+  const UserDashboardScreen({super.key});
+
+  @override
+  State<UserDashboardScreen> createState() => _UserDashboardScreenState();
+}
+
+class _ThemeToggleButton extends StatelessWidget {
+  const _ThemeToggleButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: ThemeController.instance,
+      builder: (context, _) {
+        final isDark = ThemeController.instance.isDarkMode;
+        final icon = isDark ? Icons.nights_stay : Icons.wb_sunny;
+        return InkWell(
+          onTap: ThemeController.instance.toggleTheme,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsBindingObserver {
+  AppUser? _currentUser;
+  bool _isLoadingUser = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadUser();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadUser();
+    }
+  }
+
+  Future<void> _loadUser() async {
+    try {
+      final user = await AuthService.instance.fetchCurrentUser();
+      if (!mounted) return;
+      setState(() {
+        _currentUser = user ?? AuthService.instance.currentUser;
+        _isLoadingUser = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingUser = false;
+      });
+    }
+  }
+
+  String get _greetingName {
+    final name = _currentUser?.fullName.trim();
+    if (name == null || name.isEmpty) return 'there';
+    final parts = name.split(' ');
+    return parts.first;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), // Added bottom padding for navigation
@@ -39,7 +124,7 @@ class HomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Hello! 👋',
+                  _isLoadingUser ? 'Loading... 👋' : 'Hello, $_greetingName 👋',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
@@ -54,18 +139,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ],
             ),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(
-                Icons.notifications_outlined,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
+            const _ThemeToggleButton(),
           ],
         ),
       ],
@@ -84,30 +158,13 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildActionCard(
-                context,
-                'Scan Problem',
-                'Take a photo to get instant solutions',
-                Icons.camera_alt,
-                Colors.blue,
-                () => context.go('/camera'),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildActionCard(
-                context,
-                'Find Repair Pro',
-                'Connect with local experts',
-                Icons.build,
-                Colors.orange,
-                () => context.go('/repair-services'),
-              ),
-            ),
-          ],
+        _buildActionCard(
+          context,
+          'Find Repair Pro',
+          'Connect with local experts',
+          Icons.build,
+          Colors.orange,
+          () => context.go('/repair-services'),
         ),
       ],
     );
@@ -304,7 +361,7 @@ class HomeScreen extends StatelessWidget {
           crossAxisCount: 2,
           crossAxisSpacing: 16,
           mainAxisSpacing: 16,
-          childAspectRatio: 1.5,
+          childAspectRatio: 1.8, // Increased ratio to reduce height
           children: [
             _buildCategoryCard(context, 'Electronics', Icons.devices, Colors.blue),
             _buildCategoryCard(context, 'Plumbing', Icons.plumbing, Colors.orange),
@@ -334,9 +391,10 @@ class HomeScreen extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8), // Reduced padding
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
@@ -344,15 +402,20 @@ class HomeScreen extends StatelessWidget {
               child: Icon(
                 icon,
                 color: color,
-                size: 28,
+                size: 24, // Reduced icon size
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[800],
+            const SizedBox(height: 6), // Reduced spacing
+            Flexible(
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith( // Smaller text
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1, // Force single line
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

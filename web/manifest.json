@@ -1,6 +1,6 @@
 {
-    "name": "prototype_ui",
-    "short_name": "prototype_ui",
+    "name": "SnapFix",
+    "short_name": "SnapFix",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -10,6 +10,7 @@ router.get('/profile', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
 
+    console.log(`[Users] Profile fetch success for ${user?.email || req.user.id}`);
     res.json({
       success: true,
       user: {
@@ -25,7 +26,7 @@ router.get('/profile', protect, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get Profile Error:', error);
+    console.error(`[Users] Profile fetch error for ${req.user?.id}:`, error);
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -46,6 +47,7 @@ router.put('/profile', protect, async (req, res) => {
       { new: true, runValidators: true }
     );
 
+    console.log(`[Users] Profile update success for ${user?.email || req.user.id}`);
     res.json({
       success: true,
       user: {
@@ -60,7 +62,7 @@ router.put('/profile', protect, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Update Profile Error:', error);
+    console.error(`[Users] Profile update error for ${req.user?.id}:`, error);
     res.status(500).json({
       success: false,
       message: 'Server error'

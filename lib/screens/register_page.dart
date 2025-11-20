@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/auth_service.dart';
-import '../services/api_client.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -174,7 +173,7 @@ class _RegisterPageState extends State<RegisterPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Create Account',
+              'Sign Up',
               style: GoogleFonts.inter(
                 fontSize: 28,
                 fontWeight: FontWeight.w700,
@@ -204,10 +203,6 @@ class _RegisterPageState extends State<RegisterPage> {
             _buildTermsCheckbox(context),
             const SizedBox(height: 24),
             _buildCreateAccountButton(context),
-            const SizedBox(height: 24),
-            _buildSeparator(),
-            const SizedBox(height: 24),
-            _buildSocialSignupButtons(context),
             const SizedBox(height: 24),
             _buildLoginLink(context),
           ],
@@ -317,7 +312,7 @@ class _RegisterPageState extends State<RegisterPage> {
             if (value == null || value.trim().isEmpty) {
               return 'Please enter your email';
             }
-            if (!RegExp(r'^\\S+@\\S+\\.\\S+$').hasMatch(value.trim())) {
+            if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(value.trim())) {
               return 'Enter a valid email';
             }
             return null;
@@ -702,7 +697,7 @@ class _RegisterPageState extends State<RegisterPage> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _agreeToTerms && !_isLoading ? () => _handleRegister(context) : null,
+        onPressed: _agreeToTerms && !_isLoading ? _handleRegister : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6366F1),
           disabledBackgroundColor: Colors.grey[300],
@@ -721,160 +716,14 @@ class _RegisterPageState extends State<RegisterPage> {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Create Account',
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(
-                    Icons.arrow_forward,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ],
+            : Text(
+                'Sign Up',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
-      ),
-    );
-  }
-
-  Widget _buildSeparator() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 1,
-            color: Colors.grey[300],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'OR',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[600],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: Colors.grey[300],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialSignupButtons(BuildContext context) {
-    return Column(
-      children: [
-        // Google Sign Up Button
-        _buildSocialButton(
-          icon: _buildGoogleIcon(),
-          text: 'Sign up with Google',
-          onPressed: () {
-            // Handle Google signup
-          },
-        ),
-        const SizedBox(height: 12),
-        // Facebook Sign Up Button
-        _buildSocialButton(
-          icon: _buildFacebookIcon(),
-          text: 'Sign up with Facebook',
-          onPressed: () {
-            // Handle Facebook signup
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialButton({
-    required Widget icon,
-    required String text,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          side: BorderSide(
-            color: Colors.grey[300]!,
-            width: 1.5,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          backgroundColor: Colors.white,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            icon,
-            const SizedBox(width: 12),
-            Text(
-              text,
-              style: GoogleFonts.inter(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[900],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGoogleIcon() {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Center(
-        child: Text(
-          'G',
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF4285F4),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFacebookIcon() {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1877F2),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: const Center(
-        child: Text(
-          'f',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Arial',
-          ),
-        ),
       ),
     );
   }
@@ -910,7 +759,7 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Future<void> _handleRegister(BuildContext context) async {
+  Future<void> _handleRegister() async {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) {
       return;
@@ -927,31 +776,80 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
+      final fullName = _fullNameController.text.trim();
+      final email = _emailController.text.trim();
+      final phone = _phoneController.text.trim();
+      final password = _passwordController.text;
+      
       await AuthService.instance.register(
-        fullName: _fullNameController.text.trim(),
-        email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
-        password: _passwordController.text.trim(),
+        fullName: fullName,
+        email: email,
+        phone: phone,
+        password: password,
       );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account created successfully!')),
-      );
-      context.go('/');
-    } on ApiException catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      
+      setState(() {
+        _isLoading = false;
+      });
+      
+      _showWelcomeDialog(context);
     } catch (error) {
+      setState(() {
+        _isLoading = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Registration failed: $error')),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
+  }
+
+  void _showWelcomeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.check_circle,
+                color: Colors.green,
+                size: 60,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Welcome! Your account has been created successfully 🎉',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'You can now login with your credentials.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close welcome dialog
+                context.go('/login'); // Navigate to login
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                minimumSize: const Size(double.infinity, 48),
+              ),
+              child: Text('Go to Login', style: GoogleFonts.inter(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 

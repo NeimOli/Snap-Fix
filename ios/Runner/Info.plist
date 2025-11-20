@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Prototype Ui</string>
+	<string>SnapFix</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>prototype_ui</string>
+	<string>snapfix</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -47,6 +47,12 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>SnapFix uses the camera to capture problems you want to fix.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SnapFix needs access to your photo library to select images for problem analysis.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SnapFix uses your location to find nearby repair services and technicians.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>SnapFix uses your location to find nearby repair services and provide better service recommendations.</string>
 	<key>NSUserNotificationUsageDescription</key>
 	<string>SnapFix sends helpful reminders about your repair progress.</string>
 </dict>

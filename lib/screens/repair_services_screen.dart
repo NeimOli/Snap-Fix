@@ -152,7 +152,7 @@ class _RepairServicesScreenState extends State<RepairServicesScreen> {
         'rating': 4.9,
         'reviews': 127,
         'distance': '0.8 miles',
-        'price': '\$75/hour',
+        'price': 'Rs 9,975/hour',
         'availability': 'Available now',
         'statusColor': Colors.green,
         'category': 'Plumbing',
@@ -164,7 +164,7 @@ class _RepairServicesScreenState extends State<RepairServicesScreen> {
         'rating': 4.7,
         'reviews': 89,
         'distance': '1.2 miles',
-        'price': '\$65/hour',
+        'price': 'Rs 8,645/hour',
         'availability': 'Available in 2 hours',
         'statusColor': Colors.orange,
         'category': 'Electronics',
@@ -176,7 +176,7 @@ class _RepairServicesScreenState extends State<RepairServicesScreen> {
         'rating': 4.8,
         'reviews': 203,
         'distance': '2.1 miles',
-        'price': '\$85/hour',
+        'price': 'Rs 11,305/hour',
         'availability': 'Available tomorrow',
         'statusColor': Colors.blue,
         'category': 'Appliances',
@@ -188,7 +188,7 @@ class _RepairServicesScreenState extends State<RepairServicesScreen> {
         'rating': 4.6,
         'reviews': 45,
         'distance': '1.5 miles',
-        'price': '\$60/hour',
+        'price': 'Rs 7,980/hour',
         'availability': 'Available now',
         'statusColor': Colors.green,
         'category': 'Furniture',
@@ -200,7 +200,7 @@ class _RepairServicesScreenState extends State<RepairServicesScreen> {
         'rating': 4.9,
         'reviews': 156,
         'distance': '0.5 miles',
-        'price': '\$70/hour',
+        'price': 'Rs 9,310/hour',
         'availability': 'Available in 1 hour',
         'statusColor': Colors.orange,
         'category': 'Electronics',
@@ -351,45 +351,53 @@ class _RepairServicesScreenState extends State<RepairServicesScreen> {
           // Price and action buttons
           Row(
             children: [
-              Text(
-                service['price'],
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-              const Spacer(),
-              OutlinedButton(
-                onPressed: () {},
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Theme.of(context).colorScheme.primary),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
+              Expanded(
                 child: Text(
-                  'View Profile',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w600,
+                  service['price'],
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              Expanded(
+                flex: 2,
+                child: OutlinedButton(
+                  onPressed: () {},
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Text(
+                    'View Profile',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                child: const Text(
-                  'Contact',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: () {},
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Contact',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),

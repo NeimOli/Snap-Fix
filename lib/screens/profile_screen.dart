@@ -1,16 +1,521 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../services/auth_service.dart';
+import '../services/api_client.dart';
+import '../models/user.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserver {
+  AppUser? _currentUser;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadUserData();
+    }
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = await AuthService.instance.fetchCurrentUser();
+      if (mounted) {
+        setState(() {
+          _currentUser = user;
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showEditProfileDialog() {
+    final nameController = TextEditingController(text: _currentUser!.fullName);
+    final phoneController = TextEditingController(text: _currentUser!.phone);
+    final formKey = GlobalKey<FormState>();
+    bool isUpdating = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit Profile'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your phone number';
+                    }
+                    if (value.length < 10) {
+                      return 'Please enter a valid phone number';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isUpdating ? null : () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isUpdating ? null : () async {
+                if (!formKey.currentState!.validate()) return;
+
+                setState(() {
+                  isUpdating = true;
+                });
+
+                try {
+                  final response = await ApiClient.instance.put(
+                    '/api/users/profile',
+                    body: {
+                      'fullName': nameController.text.trim(),
+                      'phone': phoneController.text.trim(),
+                    },
+                    authenticated: true,
+                  );
+
+                  if (response['success'] == true) {
+                    // Update local user data
+                    await _loadUserData();
+                    
+                    if (mounted) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Profile updated successfully!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  } else {
+                    throw Exception(response['message'] ?? 'Failed to update profile');
+                  }
+                } catch (error) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error updating profile: $error'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } finally {
+                  if (mounted) {
+                    setState(() {
+                      isUpdating = false;
+                    });
+                  }
+                }
+              },
+              child: isUpdating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMyFixesDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('My Fixes'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Your repair history will appear here'),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    _buildFixItem('Kitchen Sink Repair', 'Completed', 'Rs.2,500', '2024-01-15'),
+                    _buildFixItem('AC Maintenance', 'Completed', 'Rs.1,800', '2024-01-10'),
+                    _buildFixItem('Electrical Wiring', 'In Progress', 'Rs.3,200', '2024-01-20'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSavedSolutionsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Saved Solutions'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Your bookmarked DIY solutions'),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    _buildSolutionItem('Fix Leaky Faucet', 'Plumbing', '5 min read'),
+                    _buildSolutionItem('Clean AC Filters', 'HVAC', '3 min read'),
+                    _buildSolutionItem('Replace Light Switch', 'Electrical', '8 min read'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFavoritesDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Favorite Services'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Your liked repair services'),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    _buildFavoriteServiceItem('Quick Plumbing', '4.8★', 'Rs.500/hr'),
+                    _buildFavoriteServiceItem('Expert Electricians', '4.9★', 'Rs.600/hr'),
+                    _buildFavoriteServiceItem('Pro AC Service', '4.7★', 'Rs.700/hr'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReviewsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('My Reviews'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Your service reviews'),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    _buildReviewItem('Quick Plumbing', 'Great service!', 5, '2024-01-15'),
+                    _buildReviewItem('Expert Electricians', 'Very professional', 4, '2024-01-10'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFixItem(String title, String status, String cost, String date) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(title),
+        subtitle: Text('$date • $status'),
+        trailing: Text(
+          cost,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF6366F1),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSolutionItem(String title, String category, String readTime) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.bookmark, color: Color(0xFF6366F1)),
+        title: Text(title),
+        subtitle: Text('$category • $readTime'),
+      ),
+    );
+  }
+
+  Widget _buildFavoriteServiceItem(String name, String rating, String price) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.favorite, color: Colors.red),
+        title: Text(name),
+        subtitle: Text(rating),
+        trailing: Text(
+          price,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF6366F1),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReviewItem(String serviceName, String review, int rating, String date) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(serviceName),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: List.generate(5, (index) => Icon(
+                index < rating ? Icons.star : Icons.star_border,
+                size: 16,
+                color: Colors.amber,
+              )),
+            ),
+            const SizedBox(height: 4),
+            Text(review),
+            const SizedBox(height: 4),
+            Text(date, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showNotificationsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notification Settings'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SwitchListTile(
+              title: const Text('Push Notifications'),
+              subtitle: const Text('Receive push notifications'),
+              value: true,
+              onChanged: (value) {
+                // TODO: Implement notification settings
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Notification settings will be available soon'),
+                  ),
+                );
+              },
+            ),
+            SwitchListTile(
+              title: const Text('Email Notifications'),
+              subtitle: const Text('Receive email updates'),
+              value: true,
+              onChanged: (value) {
+                // TODO: Implement email notification settings
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Email notification settings will be available soon'),
+                  ),
+                );
+              },
+            ),
+            SwitchListTile(
+              title: const Text('Service Updates'),
+              subtitle: const Text('Updates about your repair services'),
+              value: true,
+              onChanged: (value) {
+                // TODO: Implement service update notifications
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Service update settings will be available soon'),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAboutDialog() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'SnapFix',
+      applicationVersion: '1.0.0',
+      applicationIcon: const Icon(
+        Icons.build,
+        size: 48,
+        color: Color(0xFF6366F1),
+      ),
+      children: [
+        const Text('SnapFix is your trusted companion for all home repair and maintenance needs. Connect with skilled technicians, get instant AI-powered diagnostics, and keep your home in perfect condition.'),
+        const SizedBox(height: 16),
+        const Text('Features:'),
+        const Text('• AI-powered problem detection'),
+        const Text('• Verified repair professionals'),
+        const Text('• Real-time service tracking'),
+        const Text('• Secure payment processing'),
+        const SizedBox(height: 16),
+        const Text('Powered by SnapFix'),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.grey[50],
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_currentUser == null) {
+      return Scaffold(
+        backgroundColor: Colors.grey[50],
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.person_off,
+                size: 64,
+                color: Colors.grey,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Unable to load profile',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _loadUserData,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 100), // Added bottom padding
+          padding: const EdgeInsets.only(bottom: 100),
           child: Column(
             children: [
               _buildHeader(context),
@@ -28,86 +533,97 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final gradient = LinearGradient(
+      colors: [
+        Theme.of(context).colorScheme.primary,
+        Theme.of(context).colorScheme.primary.withOpacity(0.8),
+      ],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
     return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              // Profile picture
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(40),
-                ),
-                child: const Icon(
-                  Icons.person,
-                  size: 40,
-                  color: Color(0xFF6366F1),
-                ),
+          Align(
+            alignment: Alignment.topRight,
+            child: IconButton(
+              onPressed: _showEditProfileDialog,
+              icon: const Icon(Icons.edit, color: Colors.white70),
+            ),
+          ),
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(0.4), width: 2),
+            ),
+            child: const Icon(
+              Icons.person,
+              size: 48,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _currentUser!.fullName,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _currentUser!.email,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.white70,
+            ),
+          ),
+          if (_currentUser!.phone.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              _currentUser!.phone,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.white70,
               ),
-              const SizedBox(width: 20),
-              // User info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'John Doe',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'john.doe@email.com',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'Pro Member',
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              _currentUser!.isProMember ? 'Pro Member' : 'Basic Member',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
-              // Edit button
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(
-                  Icons.edit,
-                  color: Colors.grey,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -146,7 +662,7 @@ class ProfileScreen extends StatelessWidget {
               Expanded(
                 child: _buildStatItem(
                   'Problems Fixed',
-                  '24',
+                  '${_currentUser!.problemsFixed}',
                   Icons.check_circle,
                   Colors.green,
                 ),
@@ -154,7 +670,7 @@ class ProfileScreen extends StatelessWidget {
               Expanded(
                 child: _buildStatItem(
                   'Money Saved',
-                  '\$1,200',
+                  'Rs.${_currentUser!.moneySaved}',
                   Icons.savings,
                   Colors.blue,
                 ),
@@ -162,7 +678,7 @@ class ProfileScreen extends StatelessWidget {
               Expanded(
                 child: _buildStatItem(
                   'Services Used',
-                  '8',
+                  '${_currentUser!.servicesUsed}',
                   Icons.build,
                   Colors.orange,
                 ),
@@ -231,66 +747,105 @@ class ProfileScreen extends StatelessWidget {
             'My Fixes',
             'View your repair history',
             Icons.history,
-            () {},
+            _showMyFixesDialog,
           ),
           _buildMenuItem(
             'Saved Solutions',
             'Your bookmarked fixes',
             Icons.bookmark,
-            () {},
+            _showSavedSolutionsDialog,
           ),
           _buildMenuItem(
             'Favorites',
             'Liked repair services',
             Icons.favorite,
-            () {},
+            _showFavoritesDialog,
+          ),
+          _buildMenuItem(
+            'Location Settings',
+            'Manage location permissions',
+            Icons.location_on,
+            _navigateToLocationPermission,
           ),
           _buildMenuItem(
             'Reviews',
             'Your service reviews',
             Icons.rate_review,
-            () {},
+            _showReviewsDialog,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMenuItem(String title, String subtitle, IconData icon, VoidCallback onTap) {
+  void _navigateToLocationPermission() {
+    context.go('/location-permission');
+  }
+
+
+  Widget _buildMenuItem(String title, String subtitle, IconData icon, VoidCallback onTap, {bool isDestructive = false}) {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.grey[100],
+          color: isDestructive ? Colors.red.withOpacity(0.1) : Colors.grey[100],
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
           icon,
-          color: Colors.grey[700],
+          color: isDestructive ? Colors.red : Colors.grey[700],
           size: 20,
         ),
       ),
       title: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: Colors.black87,
+          color: isDestructive ? Colors.red : Colors.black87,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
-          color: Colors.grey,
+          color: isDestructive ? Colors.red.withOpacity(0.7) : Colors.grey,
         ),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.arrow_forward_ios,
-        color: Colors.grey,
+        color: isDestructive ? Colors.red : Colors.grey,
         size: 16,
       ),
       onTap: onTap,
+    );
+  }
+
+  void _handleLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Clear any stored user data if needed
+              // Navigate to login page
+              context.go('/login');
+            },
+            child: const Text(
+              'Logout',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -314,7 +869,7 @@ class ProfileScreen extends StatelessWidget {
             'Notifications',
             'Manage your notifications',
             Icons.notifications,
-            () {},
+            _showNotificationsDialog,
           ),
           _buildMenuItem(
             'Privacy',
@@ -332,7 +887,15 @@ class ProfileScreen extends StatelessWidget {
             'About',
             'App version and info',
             Icons.info,
-            () {},
+            _showAboutDialog,
+          ),
+          const Divider(),
+          _buildMenuItem(
+            'Logout',
+            'Sign out of your account',
+            Icons.logout,
+            _handleLogout,
+            isDestructive: true,
           ),
         ],
       ),

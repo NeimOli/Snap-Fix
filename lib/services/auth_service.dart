@@ -43,12 +43,14 @@ class AuthService {
   Future<AppUser> login({
     required String email,
     required String password,
+    bool rememberMe = false,
   }) async {
     final response = await _apiClient.post(
       '/api/auth/login',
       body: {
         'email': email,
         'password': password,
+        'rememberMe': rememberMe,
       },
     );
 
@@ -59,7 +61,7 @@ class AuthService {
       throw ApiException('Invalid login response');
     }
 
-    await TokenStorage.saveToken(token);
+    await TokenStorage.saveToken(token, persist: rememberMe);
     currentUser = AppUser.fromJson(userData);
     return currentUser!;
   }

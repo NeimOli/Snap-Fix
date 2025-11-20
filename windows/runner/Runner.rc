@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.ui.com" "\0"
-            VALUE "FileDescription", "prototype_ui" "\0"
+            VALUE "FileDescription", "SnapFix" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "prototype_ui" "\0"
+            VALUE "InternalName", "SnapFix" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.ui.com. All rights reserved." "\0"
-            VALUE "OriginalFilename", "prototype_ui.exe" "\0"
-            VALUE "ProductName", "prototype_ui" "\0"
+            VALUE "OriginalFilename", "SnapFix.exe" "\0"
+            VALUE "ProductName", "SnapFix" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

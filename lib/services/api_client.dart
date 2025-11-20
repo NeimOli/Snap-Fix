@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../core/config.dart';
@@ -35,6 +35,20 @@ class ApiClient {
   }) async {
     final headers = await _buildHeaders(authenticated: authenticated);
     final response = await _client.post(
+      _buildUri(path),
+      headers: headers,
+      body: jsonEncode(body ?? {}),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Map<String, dynamic>? body,
+    bool authenticated = false,
+  }) async {
+    final headers = await _buildHeaders(authenticated: authenticated);
+    final response = await _client.put(
       _buildUri(path),
       headers: headers,
       body: jsonEncode(body ?? {}),

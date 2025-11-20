@@ -5,13 +5,17 @@ import 'screens/splash_screen.dart';
 import 'screens/start_page.dart';
 import 'screens/login_page.dart';
 import 'screens/register_page.dart';
-import 'screens/home_screen.dart';
-import 'screens/camera_screen.dart';
-import 'screens/results_screen.dart';
+import 'screens/user_dashboard_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/repair_services_screen.dart';
+import 'screens/scan_screen.dart';
+import 'screens/location_permission_screen.dart';
+import 'screens/admin_dashboard_screen.dart';
+import 'screens/results_screen.dart';
+import 'core/theme_controller.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const SnapFixApp());
 }
 
@@ -20,27 +24,63 @@ class SnapFixApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'SnapFix',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1), // Indigo primary
-          brightness: Brightness.light,
-        ),
-        textTheme: GoogleFonts.interTextTheme(),
-        appBarTheme: AppBarTheme(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          titleTextStyle: GoogleFonts.inter(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
+    return AnimatedBuilder(
+      animation: ThemeController.instance,
+      builder: (context, _) {
+        return MaterialApp.router(
+          title: 'SnapFix',
+          debugShowCheckedModeBanner: false,
+          theme: _buildLightTheme(),
+          darkTheme: _buildDarkTheme(),
+          themeMode: ThemeController.instance.themeMode,
+          routerConfig: _router,
+        );
+      },
+    );
+  }
+
+  ThemeData _buildLightTheme() {
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF6366F1),
+        brightness: Brightness.light,
+      ),
+    );
+    return base.copyWith(
+      textTheme: GoogleFonts.interTextTheme(base.textTheme),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: Colors.black87,
         ),
       ),
-      routerConfig: _router,
+    );
+  }
+
+  ThemeData _buildDarkTheme() {
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF6366F1),
+        brightness: Brightness.dark,
+      ),
+      brightness: Brightness.dark,
+    );
+    return base.copyWith(
+      textTheme: GoogleFonts.interTextTheme(base.textTheme),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
     );
   }
 }
@@ -64,6 +104,14 @@ final GoRouter _router = GoRouter(
       path: '/register',
       builder: (context, state) => const RegisterPage(),
     ),
+    GoRoute(
+      path: '/location-permission',
+      builder: (context, state) => const LocationPermissionScreen(),
+    ),
+    GoRoute(
+      path: '/admin',
+      builder: (context, state) => const AdminDashboardScreen(),
+    ),
     ShellRoute(
       builder: (context, state, child) {
         return MainNavigationWrapper(child: child);
@@ -71,11 +119,11 @@ final GoRouter _router = GoRouter(
       routes: [
         GoRoute(
           path: '/',
-          builder: (context, state) => const HomeScreen(),
+          builder: (context, state) => const UserDashboardScreen(),
         ),
         GoRoute(
-          path: '/camera',
-          builder: (context, state) => const CameraScreen(),
+          path: '/scan',
+          builder: (context, state) => const ScanScreen(),
         ),
         GoRoute(
           path: '/results',
@@ -116,7 +164,7 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         context.go('/');
         break;
       case 1:
-        context.go('/camera');
+        context.go('/scan');
         break;
       case 2:
         context.go('/repair-services');

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/notification_permission_service.dart';
+import '../services/camera_permission_service.dart';
 
 class StartPage extends StatefulWidget {
   const StartPage({super.key});
@@ -17,6 +18,7 @@ class _StartPageState extends State<StartPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationPermissionService.requestPermissionIfNeeded(context);
+      CameraPermissionService.requestPermissionIfNeeded(context);
     });
   }
 

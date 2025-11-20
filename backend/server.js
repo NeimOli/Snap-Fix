@@ -10,7 +10,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: ['http://localhost:3000', 'http://localhost:58640', 'http://192.168.18.2:5000'],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -21,6 +21,8 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/problems', require('./routes/problems'));
 app.use('/api/services', require('./routes/services'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/admin', require('./routes/adminAuth'));
+app.use('/api/analysis', require('./routes/analysis'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

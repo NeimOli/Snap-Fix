@@ -34,6 +34,7 @@ router.post('/register', [
     // Check if user already exists
     const userExists = await User.findOne({ email });
     if (userExists) {
+      console.warn(`[Auth] Register attempt failed - existing user ${email}`);
       return res.status(400).json({
         success: false,
         message: 'User already exists with this email'
@@ -51,6 +52,7 @@ router.post('/register', [
     // Generate token
     const token = generateToken(user._id);
 
+    console.log(`[Auth] Register success for ${email}`);
     res.status(201).json({
       success: true,
       token,
@@ -66,7 +68,7 @@ router.post('/register', [
       }
     });
   } catch (error) {
-    console.error('Register Error:', error);
+    console.error(`[Auth] Register error for ${req.body?.email || 'unknown'}:`, error);
     res.status(500).json({
       success: false,
       message: 'Server error during registration'
@@ -95,6 +97,7 @@ router.post('/login', [
     // Check if user exists
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
+      console.warn(`[Auth] Login failed - no user found for ${email}`);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -104,6 +107,7 @@ router.post('/login', [
     // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      console.warn(`[Auth] Login failed - wrong password for ${email}`);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -113,6 +117,7 @@ router.post('/login', [
     // Generate token
     const token = generateToken(user._id);
 
+    console.log(`[Auth] Login success for ${email}`);
     res.json({
       success: true,
       token,
@@ -128,7 +133,7 @@ router.post('/login', [
       }
     });
   } catch (error) {
-    console.error('Login Error:', error);
+    console.error(`[Auth] Login error for ${req.body?.email || 'unknown'}:`, error);
     res.status(500).json({
       success: false,
       message: 'Server error during login'

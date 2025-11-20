@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/auth_service.dart';
+import '../services/admin_auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -19,6 +20,9 @@ class _LoginPageState extends State<LoginPage> {
   bool _rememberMe = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  static const _adminEmail = 'admin@snapfix.com';
+  static const _adminPassword = 'snapfix123@';
 
   @override
   void dispose() {
@@ -189,10 +193,6 @@ class _LoginPageState extends State<LoginPage> {
             const SizedBox(height: 32),
             _buildLoginButton(context),
             const SizedBox(height: 24),
-            _buildSeparator(),
-            const SizedBox(height: 24),
-            _buildSocialLoginButtons(context),
-            const SizedBox(height: 24),
             _buildSignUpLink(context),
           ],
         ),
@@ -230,7 +230,7 @@ class _LoginPageState extends State<LoginPage> {
             if (value == null || value.isEmpty) {
               return 'Please enter your email';
             }
-            if (!RegExp(r'^\\S+@\\S+\\.\\S+$').hasMatch(value)) {
+            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
               return 'Please enter a valid email';
             }
             return null;
@@ -455,141 +455,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildSeparator() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 1,
-            color: Colors.grey[300],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'OR',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[600],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: Colors.grey[300],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialLoginButtons(BuildContext context) {
-    return Column(
-      children: [
-        // Google Login Button
-        _buildSocialButton(
-          icon: _buildGoogleIcon(),
-          text: 'Continue with Google',
-          onPressed: () {
-            // Handle Google login
-          },
-        ),
-        const SizedBox(height: 12),
-        // Facebook Login Button
-        _buildSocialButton(
-          icon: _buildFacebookIcon(),
-          text: 'Continue with Facebook',
-          onPressed: () {
-            // Handle Facebook login
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialButton({
-    required Widget icon,
-    required String text,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          side: BorderSide(
-            color: Colors.grey[300]!,
-            width: 1.5,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          backgroundColor: Colors.white,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            icon,
-            const SizedBox(width: 12),
-            Text(
-              text,
-              style: GoogleFonts.inter(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[900],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGoogleIcon() {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Center(
-        child: Text(
-          'G',
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF4285F4),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFacebookIcon() {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1877F2),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: const Center(
-        child: Text(
-          'f',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Arial',
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildSignUpLink(BuildContext context) {
     return Center(
       child: Row(
@@ -631,9 +496,30 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim();
+
+      if (_isAdminCredentials(email, password)) {
+        final result = await AdminAuthService.login(email, password);
+        if (!mounted) return;
+
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Welcome back, Admin!')),
+          );
+          context.go('/admin');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result['message']?.toString() ?? 'Admin login failed')),
+          );
+        }
+        return;
+      }
+
       await AuthService.instance.login(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+        email: email,
+        password: password,
+        rememberMe: _rememberMe,
       );
 
       if (!mounted) return;
@@ -654,6 +540,10 @@ class _LoginPageState extends State<LoginPage> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  bool _isAdminCredentials(String email, String password) {
+    return email.toLowerCase() == _adminEmail && password == _adminPassword;
   }
 }
 

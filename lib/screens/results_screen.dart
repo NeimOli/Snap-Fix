@@ -11,18 +11,31 @@ class ResultsScreen extends StatefulWidget {
 class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   bool _isAnalyzing = true;
+  String? _imagePath;
+  Map<String, dynamic>? _analysisResult;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    
-    // Simulate AI analysis
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() {
-        _isAnalyzing = false;
-      });
-    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_isAnalyzing) {
+      final routerState = GoRouterState.of(context);
+      final args = routerState.extra ?? ModalRoute.of(context)?.settings.arguments;
+
+      if (args is Map && args.containsKey('imagePath') && args.containsKey('analysisResult')) {
+        _imagePath = args['imagePath'] as String;
+        _analysisResult = args['analysisResult'] as Map<String, dynamic>;
+        setState(() {
+          _isAnalyzing = false;
+        });
+      }
+    }
   }
 
   @override
@@ -34,6 +47,7 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -149,18 +163,18 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
                 ],
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Leaky Kitchen Faucet',
-                style: TextStyle(
+              Text(
+                _analysisResult?['problem'] ?? 'Problem identified',
+                style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
                   color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'The faucet has a worn-out O-ring or washer causing water to leak from the base.',
-                style: TextStyle(
+              Text(
+                _analysisResult?['cause'] ?? 'Analysis completed',
+                style: const TextStyle(
                   fontSize: 16,
                   color: Colors.grey,
                   height: 1.5,
@@ -217,11 +231,195 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
   }
 
   Widget _buildDIYFixTab() {
+    final solution = _analysisResult?['solution'] as List<dynamic>? ?? [];
+    final tools = _analysisResult?['tools'] as List<dynamic>? ?? [];
+    final difficulty = _analysisResult?['difficulty'] as String? ?? 'Medium';
+    final estimatedTime = _analysisResult?['estimatedTime'] as String? ?? '30-60 minutes';
+    final safety = _analysisResult?['safety'] as List<dynamic>? ?? [];
+    
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), // Added bottom padding
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Difficulty and Time Info
+          Container(
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Difficulty',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        difficulty,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Estimated Time',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        estimatedTime,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Safety Precautions
+          if (safety.isNotEmpty) ...[
+            const Text(
+              'Safety Precautions',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning, color: Colors.red, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Important Safety Notes',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ...safety.map((precaution) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('• ', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                        Expanded(
+                          child: Text(
+                            precaution.toString(),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.black87,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                ],
+              ),
+            ),
+          ],
+          
+          // Required Tools
+          if (tools.isNotEmpty) ...[
+            const Text(
+              'Required Tools',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ...tools.map((tool) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          tool.toString(),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                ],
+              ),
+            ),
+          ],
+          
+          // Step-by-Step Solution
           const Text(
             'Step-by-Step Fix',
             style: TextStyle(
@@ -231,34 +429,18 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             ),
           ),
           const SizedBox(height: 16),
-          _buildStepCard(
-            '1',
-            'Turn off water supply',
-            'Locate the shut-off valves under the sink and turn them clockwise to stop water flow.',
-            Icons.water_drop,
-            Colors.blue,
-          ),
-          _buildStepCard(
-            '2',
-            'Remove the faucet handle',
-            'Use a screwdriver to remove the handle and expose the cartridge or valve.',
-            Icons.build,
-            Colors.orange,
-          ),
-          _buildStepCard(
-            '3',
-            'Replace the O-ring',
-            'Remove the old O-ring and replace it with a new one of the same size.',
-            Icons.circle,
-            Colors.green,
-          ),
-          _buildStepCard(
-            '4',
-            'Reassemble and test',
-            'Put everything back together and turn the water supply back on to test.',
-            Icons.check_circle,
-            Colors.purple,
-          ),
+          ...solution.asMap().entries.map((entry) {
+            final index = entry.key;
+            final step = entry.value.toString();
+            return _buildStepCard(
+              '${index + 1}',
+              step.length > 50 ? step.substring(0, 50) + '...' : step,
+              step,
+              Icons.build,
+              Colors.blue,
+            );
+          }).toList(),
+          
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
@@ -523,7 +705,7 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             'Mike\'s Plumbing',
             '4.9',
             '0.8 miles away',
-            '\$75/hour',
+            'Rs 9,975/hour',
             'Available now',
             Colors.green,
           ),
@@ -531,7 +713,7 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             'Quick Fix Services',
             '4.7',
             '1.2 miles away',
-            '\$65/hour',
+            'Rs 8,645/hour',
             'Available in 2 hours',
             Colors.orange,
           ),
@@ -539,7 +721,7 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             'Pro Repair Co.',
             '4.8',
             '2.1 miles away',
-            '\$85/hour',
+            'Rs 11,305/hour',
             'Available tomorrow',
             Colors.blue,
           ),
