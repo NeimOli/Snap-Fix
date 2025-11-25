@@ -4,8 +4,7 @@ package-lock.json
 
 # Environment variables
 .env
-
-
+service-account-key.json
 # Logs
 logs
 *.log
