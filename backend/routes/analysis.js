@@ -222,4 +222,176 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Follow-up chat endpoint (text-only, no image required)
+router.post('/chat', async (req, res) => {
+  try {
+    const { question, context } = req.body || {};
+
+    if (!question) {
+      return res.status(400).json({
+        success: false,
+        message: 'Question is required',
+      });
+    }
+
+    const basePrompt =
+      'You are a helpful home repair assistant. Answer the user\'s question clearly and concisely. If relevant, refer to the existing analysis context but do not repeat long text unless needed.';
+
+    const fullPrompt = context
+      ? `${basePrompt}\n\nPrevious analysis context:\n${context}\n\nUser question: ${question}`
+      : `${basePrompt}\n\nUser question: ${question}`;
+
+    const modelId = process.env.HUGGING_FACE_MODEL || DEFAULT_MODEL;
+    const groqApiKey = process.env.GROQ_API_KEY;
+    const groqModel = process.env.GROQ_MODEL;
+    const useGroq = Boolean(groqApiKey && groqModel);
+
+    if (useGroq) {
+      try {
+        const groqResponse = await axios.post(
+          'https://api.groq.com/openai/v1/chat/completions',
+          {
+            model: groqModel,
+            messages: [
+              {
+                role: 'user',
+                content: fullPrompt,
+              },
+            ],
+            temperature: 0.3,
+            max_tokens: 512,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${groqApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 60000,
+          }
+        );
+
+        const messageContent = groqResponse.data?.choices?.[0]?.message?.content;
+        let answer = '';
+        if (typeof messageContent === 'string') {
+          answer = messageContent;
+        } else if (Array.isArray(messageContent)) {
+          answer = messageContent
+            .map((item) => item.text || item.content || '')
+            .filter(Boolean)
+            .join('\n');
+        }
+
+        return res.json({
+          success: true,
+          provider: 'groq',
+          answer,
+        });
+      } catch (groqError) {
+        const status = groqError.response?.status || 500;
+        const groqMessage = groqError.response?.data?.error || groqError.message;
+        console.error('[Analysis Chat] Groq request failed', {
+          status,
+          groqMessage,
+          url: groqError.config?.url,
+        });
+
+        return res.status(status).json({
+          success: false,
+          message: 'Failed to process chat via Groq. Please try again.',
+          error: groqMessage,
+        });
+      }
+    }
+
+    const apiKey = process.env.HUGGING_FACE_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
+        success: false,
+        message: 'Hugging Face API key is not configured on the server',
+      });
+    }
+
+    const payload = {
+      inputs: fullPrompt,
+      parameters: {
+        max_new_tokens: 256,
+        temperature: 0.3,
+      },
+    };
+
+    const requestConfig = {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 60000,
+    };
+
+    let hfResponse;
+    try {
+      hfResponse = await axios.post(
+        `https://router.huggingface.co/hf-inference/models/${modelId}`,
+        payload,
+        requestConfig
+      );
+    } catch (routerError) {
+      if (routerError.response?.status !== 404) {
+        throw routerError;
+      }
+
+      console.warn('[Analysis Chat] Router returned 404, retrying via legacy endpoint', {
+        modelId,
+        routerMessage: routerError.response?.data?.error || routerError.message,
+      });
+
+      hfResponse = await axios.post(
+        `https://api-inference.huggingface.co/models/${modelId}`,
+        payload,
+        {
+          ...requestConfig,
+          headers: {
+            ...requestConfig.headers,
+            'X-Wait-For-Model': 'true',
+          },
+        }
+      );
+    }
+
+    const data = hfResponse.data;
+    let answer = '';
+
+    if (Array.isArray(data)) {
+      answer = data
+        .map((entry) => entry.generated_text || entry.answer || entry.output || '')
+        .filter(Boolean)
+        .join('\n');
+    } else if (typeof data === 'object') {
+      answer = data.generated_text || data.answer || JSON.stringify(data);
+    } else if (typeof data === 'string') {
+      answer = data;
+    }
+
+    return res.json({
+      success: true,
+      provider: 'huggingface',
+      answer,
+    });
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const hfMessage = error.response?.data?.error || error.message;
+
+    console.error('[Analysis Chat] Hugging Face request failed', {
+      status,
+      hfMessage,
+      url: error.config?.url,
+    });
+
+    return res.status(status).json({
+      success: false,
+      message: 'Failed to process chat message. Please try again.',
+      error: hfMessage,
+    });
+  }
+});
+
 module.exports = router;

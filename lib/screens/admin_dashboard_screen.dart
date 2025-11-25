@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -126,6 +127,194 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     if (mounted) {
       context.go('/login');
     }
+  }
+
+  Future<void> _showApiConfigDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrlController = TextEditingController(text: prefs.getString('admin_api_base_url') ?? '');
+    final providerController = TextEditingController(text: prefs.getString('admin_ai_provider') ?? 'default');
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('API Configuration'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: baseUrlController,
+                decoration: const InputDecoration(
+                  labelText: 'Backend Base URL',
+                  hintText: 'https://api.snapfix.yourdomain.com',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: providerController,
+                decoration: const InputDecoration(
+                  labelText: 'AI Provider',
+                  hintText: 'groq / huggingface / default',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await prefs.setString('admin_api_base_url', baseUrlController.text.trim());
+                await prefs.setString('admin_ai_provider', providerController.text.trim());
+                if (!mounted) return;
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('API configuration saved locally')), 
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showUserPermissionsDialog() async {
+    final totalUsers = _users.length;
+    final userRoleCount = _users.where((u) => (u as Map<String, dynamic>)['role'] == 'user').length;
+    final providerRoleCount = _users.where((u) => (u as Map<String, dynamic>)['role'] == 'provider').length;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('User Permissions'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Total accounts: $totalUsers'),
+              const SizedBox(height: 8),
+              Text('Users: $userRoleCount'),
+              Text('Providers: $providerRoleCount'),
+              const SizedBox(height: 12),
+              const Text(
+                'Roles are managed by the backend using the user "role" field. '
+                'Use provider onboarding to create new providers.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showSystemMaintenanceDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        bool isRefreshing = false;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('System Maintenance'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text('Use these tools to keep the admin dashboard in sync.'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    if (isRefreshing) return;
+                    setState(() {
+                      isRefreshing = true;
+                    });
+                    await _loadDashboardData();
+                    await _loadUsers();
+                    if (!mounted) return;
+                    setState(() {
+                      isRefreshing = false;
+                    });
+                    Navigator.of(dialogContext).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Dashboard data refreshed')),
+                    );
+                  },
+                  child: isRefreshing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Refresh data'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.of(dialogContext).pop();
+                    await _confirmLogout();
+                  },
+                  child: const Text('Clear admin session'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showDataExportDialog() async {
+    final exportPayload = {
+      'stats': _dashboardData?['stats'] ?? {},
+      'userCount': _users.length,
+    };
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Data Export'),
+          content: const Text(
+            'Copy a JSON summary of key metrics to the clipboard. '
+            'You can paste this into a file or spreadsheet tool.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: exportPayload.toString()));
+                if (!mounted) return;
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Export data copied to clipboard')),
+                );
+              },
+              child: const Text('Copy JSON'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _confirmLogout() async {
@@ -258,7 +447,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               children: [
                 Expanded(child: _buildStatCard('Total Users', '${_dashboardData?['stats']?['totalUsers'] ?? 1234}', Colors.blue, Icons.people)),
                 const SizedBox(width: 12),
-                Expanded(child: _buildStatCard('Active Analyses', '${_dashboardData?['stats']?['activeAnalyses'] ?? 45}', Colors.green, Icons.analytics)),
+                Expanded(child: _buildStatCard('Active Providers', '${_dashboardData?['stats']?['activeProviders'] ?? 0}', Colors.green, Icons.home_repair_service)),
                 const SizedBox(width: 12),
                 Expanded(child: _buildStatCard('Revenue', 'Rs ${(_dashboardData?['stats']?['revenue'] ?? 245000).toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}', Colors.orange, Icons.currency_rupee)),
               ],
@@ -291,7 +480,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               tabs: const [
                 Tab(text: 'Overview'),
                 Tab(text: 'Users'),
-                Tab(text: 'Analyses'),
+                Tab(text: 'Providers'),
                 Tab(text: 'Settings'),
               ],
             ),
@@ -304,7 +493,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               children: [
                 _buildOverviewTab(),
                 _buildUsersTab(),
-                _buildAnalysesTab(),
+                _buildProvidersTab(),
                 _buildSettingsTab(),
               ],
             ),
@@ -368,6 +557,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildOverviewTab() {
+    final recentAnalyses = (_dashboardData?['recentAnalyses'] as List<dynamic>? ?? _recentAnalyses)
+        .whereType<Map<String, dynamic>>()
+        .toList();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -434,7 +626,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
           const SizedBox(height: 16),
-          ..._recentAnalyses.map((analysis) => _buildActivityCard(analysis)).toList(),
+          if (recentAnalyses.isEmpty)
+            const Text(
+              'No recent activity yet.',
+              style: TextStyle(color: Colors.grey),
+            )
+          else
+            ...recentAnalyses.map((analysis) => _buildActivityCard(analysis)).toList(),
         ],
       ),
     );
@@ -812,14 +1010,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     }
   }
 
-  Widget _buildAnalysesTab() {
+  Widget _buildProvidersTab() {
+    final providers = _users.where((user) {
+      final map = user as Map<String, dynamic>;
+      final role = (map['role'] ?? '').toString().toLowerCase();
+      return role == 'provider';
+    }).toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'AI Analyses',
+            'Providers',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -827,13 +1031,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ),
           const SizedBox(height: 20),
-          ...(_dashboardData?['recentAnalyses'] as List<dynamic>? ?? _recentAnalyses).map((analysis) => _buildAnalysisCard(analysis)).toList(),
+          if (_isLoadingUsers)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (providers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Column(
+                children: const [
+                  Icon(Icons.home_repair_service, color: Colors.grey, size: 40),
+                  SizedBox(height: 12),
+                  Text('No providers found', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            )
+          else
+            ...providers.map((user) => _buildProviderCard(user as Map<String, dynamic>)).toList(),
         ],
       ),
     );
   }
 
-  Widget _buildAnalysisCard(Map<String, dynamic> analysis) {
+  Widget _buildProviderCard(Map<String, dynamic> user) {
+    final name = user['fullName'] ?? user['name'] ?? 'Unknown Provider';
+    final email = user['email'] ?? 'N/A';
+    final phone = user['phone'] ?? 'Not provided';
+    final category = user['serviceCategory'] ?? 'Category not set';
+    final joinedDate = user['createdAt']?.toString().split('T').first ?? user['date'] ?? '—';
+    final pan = (user['panNumber'] ?? '').toString().isNotEmpty ? user['panNumber'] : 'Not provided';
+    final problemsFixed = user['problemsFixed'] ?? 0;
+    final moneySaved = user['moneySaved'] ?? 0;
+    final servicesUsed = user['servicesUsed'] ?? 0;
+    final isPro = user['isProMember'] == true;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -850,16 +1084,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
+          CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
             child: Icon(
-              Icons.psychology,
+              Icons.home_repair_service,
               color: Theme.of(context).colorScheme.primary,
-              size: 20,
             ),
           ),
           const SizedBox(width: 12),
@@ -867,48 +1096,101 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  analysis['user'],
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    if (isPro)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          'Pro',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 Text(
-                  '${analysis['type']} Analysis',
+                  email,
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
                   ),
                 ),
                 Text(
-                  analysis['date'],
+                  'Category: $category',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
                   ),
+                ),
+                Text(
+                  'Joined $joinedDate',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  phone,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'PAN: $pan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      'Problems fixed: $problemsFixed',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Text(
+                      'Money saved: Rs $moneySaved',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Text(
+                      'Services used: $servicesUsed',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: analysis['status'] == 'Completed' 
-                  ? Colors.green.withOpacity(0.1)
-                  : Colors.orange.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              analysis['status'],
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: analysis['status'] == 'Completed' 
-                    ? Colors.green
-                    : Colors.orange,
-              ),
             ),
           ),
         ],
@@ -935,25 +1217,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             'API Configuration',
             'Manage OpenAI API settings',
             Icons.key,
-            () {},
+            _showApiConfigDialog,
           ),
           _buildSettingItem(
             'User Permissions',
             'Manage user roles and permissions',
             Icons.admin_panel_settings,
-            () {},
+            _showUserPermissionsDialog,
           ),
           _buildSettingItem(
             'System Maintenance',
             'System updates and maintenance',
             Icons.settings,
-            () {},
+            _showSystemMaintenanceDialog,
           ),
           _buildSettingItem(
             'Data Export',
             'Export user data and analytics',
             Icons.download,
-            () {},
+            _showDataExportDialog,
           ),
         ],
       ),

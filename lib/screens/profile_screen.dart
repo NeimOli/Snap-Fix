@@ -1,5 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../models/user.dart';
@@ -14,6 +19,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserver {
   AppUser? _currentUser;
   bool _isLoading = true;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -32,6 +38,40 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadUserData();
+    }
+  }
+
+  Future<void> _changeAvatar() async {
+    try {
+      final picked = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 75);
+      if (picked == null) return;
+
+      final bytes = await picked.readAsBytes();
+      final base64Image = base64Encode(bytes);
+      final dataUrl = 'data:image/jpeg;base64,$base64Image';
+
+      final response = await ApiClient.instance.put(
+        '/api/users/avatar',
+        body: {
+          'avatarBase64': dataUrl,
+        },
+        authenticated: true,
+      );
+
+      if (response['success'] == true) {
+        await _loadUserData();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile photo updated.')),
+        );
+      } else {
+        throw Exception(response['message'] ?? 'Failed to update avatar');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating photo: $error')),
+      );
     }
   }
 
@@ -174,6 +214,36 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
         ),
       ),
     );
+  }
+
+  Widget _buildAvatarImage() {
+    final avatarUrl = _currentUser?.avatarUrl ?? '';
+    if (avatarUrl.isEmpty) {
+      return const Icon(
+        Icons.person,
+        size: 48,
+        color: Colors.white,
+      );
+    }
+
+    try {
+      final base64Part = avatarUrl.contains('base64,')
+          ? avatarUrl.split('base64,').last
+          : avatarUrl;
+      final bytes = base64Decode(base64Part);
+      return ClipOval(
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+        ),
+      );
+    } catch (_) {
+      return const Icon(
+        Icons.person,
+        size: 48,
+        color: Colors.white,
+      );
+    }
   }
 
   void _showMyFixesDialog() {
@@ -389,59 +459,88 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   void _showNotificationsDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Notification Settings'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SwitchListTile(
-              title: const Text('Push Notifications'),
-              subtitle: const Text('Receive push notifications'),
-              value: true,
-              onChanged: (value) {
-                // TODO: Implement notification settings
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Notification settings will be available soon'),
+      builder: (dialogContext) {
+        bool pushEnabled = true;
+        bool emailEnabled = true;
+        bool serviceUpdatesEnabled = true;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> _loadPrefsOnce() async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                setState(() {
+                  pushEnabled = prefs.getBool('notif_push') ?? true;
+                  emailEnabled = prefs.getBool('notif_email') ?? true;
+                  serviceUpdatesEnabled = prefs.getBool('notif_service_updates') ?? true;
+                });
+              } catch (_) {}
+            }
+
+            // Trigger load on first build
+            if (pushEnabled == true && emailEnabled == true && serviceUpdatesEnabled == true) {
+              _loadPrefsOnce();
+            }
+
+            Future<void> _savePrefs() async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('notif_push', pushEnabled);
+                await prefs.setBool('notif_email', emailEnabled);
+                await prefs.setBool('notif_service_updates', serviceUpdatesEnabled);
+              } catch (_) {}
+            }
+
+            return AlertDialog(
+              title: const Text('Notification Settings'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    title: const Text('Push Notifications'),
+                    subtitle: const Text('Receive app alerts and reminders'),
+                    value: pushEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        pushEnabled = value;
+                      });
+                      _savePrefs();
+                    },
                   ),
-                );
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Email Notifications'),
-              subtitle: const Text('Receive email updates'),
-              value: true,
-              onChanged: (value) {
-                // TODO: Implement email notification settings
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Email notification settings will be available soon'),
+                  SwitchListTile(
+                    title: const Text('Email Notifications'),
+                    subtitle: const Text('Receive important updates by email'),
+                    value: emailEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        emailEnabled = value;
+                      });
+                      _savePrefs();
+                    },
                   ),
-                );
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Service Updates'),
-              subtitle: const Text('Updates about your repair services'),
-              value: true,
-              onChanged: (value) {
-                // TODO: Implement service update notifications
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Service update settings will be available soon'),
+                  SwitchListTile(
+                    title: const Text('Service Updates'),
+                    subtitle: const Text('Tips and updates about your repair services'),
+                    value: serviceUpdatesEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        serviceUpdatesEnabled = value;
+                      });
+                      _savePrefs();
+                    },
                   ),
-                );
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -565,18 +664,17 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
               icon: const Icon(Icons.edit, color: Colors.white70),
             ),
           ),
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withOpacity(0.4), width: 2),
-            ),
-            child: const Icon(
-              Icons.person,
-              size: 48,
-              color: Colors.white,
+          GestureDetector(
+            onTap: _changeAvatar,
+            child: Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withOpacity(0.4), width: 2),
+              ),
+              child: _buildAvatarImage(),
             ),
           ),
           const SizedBox(height: 16),
@@ -631,15 +729,17 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   }
 
   Widget _buildStats(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -648,12 +748,10 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Your Activity',
-            style: TextStyle(
-              fontSize: 18,
+            style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
             ),
           ),
           const SizedBox(height: 20),
@@ -708,19 +806,16 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
         const SizedBox(height: 8),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-          ),
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
+              ),
           textAlign: TextAlign.center,
         ),
       ],
@@ -728,14 +823,16 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   }
 
   Widget _buildMenuItems(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -747,7 +844,9 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
             'My Fixes',
             'View your repair history',
             Icons.history,
-            _showMyFixesDialog,
+            () {
+              context.go('/history');
+            },
           ),
           _buildMenuItem(
             'Saved Solutions',
@@ -788,7 +887,9 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isDestructive ? Colors.red.withOpacity(0.1) : Colors.grey[100],
+          color: isDestructive
+              ? Colors.red.withOpacity(0.1)
+              : Theme.of(context).colorScheme.surfaceVariant,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
@@ -802,19 +903,25 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
         style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: isDestructive ? Colors.red : Colors.black87,
+          color: isDestructive
+              ? Colors.red
+              : Theme.of(context).textTheme.bodyLarge?.color,
         ),
       ),
       subtitle: Text(
         subtitle,
         style: TextStyle(
           fontSize: 14,
-          color: isDestructive ? Colors.red.withOpacity(0.7) : Colors.grey,
+          color: isDestructive
+              ? Colors.red.withOpacity(0.7)
+              : Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
         ),
       ),
       trailing: Icon(
         Icons.arrow_forward_ios,
-        color: isDestructive ? Colors.red : Colors.grey,
+        color: isDestructive
+            ? Colors.red
+            : Theme.of(context).iconTheme.color?.withOpacity(0.7),
         size: 16,
       ),
       onTap: onTap,
@@ -850,14 +957,16 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   }
 
   Widget _buildSettings(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -875,13 +984,58 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
             'Privacy',
             'Control your privacy settings',
             Icons.privacy_tip,
-            () {},
+            () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Privacy'),
+                  content: const Text(
+                    'SnapFix stores only the data needed to provide repair suggestions and connect you with providers. '
+                    'Your photos and analysis history are kept secure and are not shared with providers without your action.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
           _buildMenuItem(
             'Help & Support',
             'Get help and contact support',
             Icons.help,
-            () {},
+            () async {
+              const email = 'support@snapfix.app';
+              const subject = 'SnapFix Support Request';
+              final uri = Uri(
+                scheme: 'mailto',
+                path: email,
+                query: 'subject=${Uri.encodeComponent(subject)}',
+              );
+
+              try {
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri);
+                } else {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not open email app. Please contact support@snapfix.app'),
+                    ),
+                  );
+                }
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Could not open email app. Please contact support@snapfix.app'),
+                  ),
+                );
+              }
+            },
           ),
           _buildMenuItem(
             'About',

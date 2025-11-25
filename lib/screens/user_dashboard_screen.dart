@@ -92,21 +92,45 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), // Added bottom padding for navigation
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(context),
-              const SizedBox(height: 24),
-              _buildQuickActions(context),
-              const SizedBox(height: 32),
-              _buildRecentFixes(context),
-              const SizedBox(height: 32),
-              _buildPopularCategories(context),
-            ],
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    theme.colorScheme.surface,
+                    theme.scaffoldBackgroundColor,
+                  ],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFFF3F4FF),
+                    Color(0xFFF9FAFB),
+                  ],
+                ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: 24),
+                _buildQuickActions(context),
+                const SizedBox(height: 32),
+                _buildRecentFixes(context),
+                const SizedBox(height: 32),
+                _buildPopularCategories(context),
+              ],
+            ),
           ),
         ),
       ),
@@ -114,57 +138,136 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _isLoadingUser ? 'Loading... 👋' : 'Hello, $_greetingName 👋',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isLoadingUser ? 'Loading... 👋' : 'Hello, $_greetingName 👋',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Snap, scan and fix in minutes.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                    ),
+                  ),
+                ],
+              ),
+              const _ThemeToggleButton(),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => context.go('/scan'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
+                  label: const Text(
+                    'Scan a problem',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'What needs fixing today?',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.grey[600],
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton(
+                onPressed: () => context.go('/history'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-              ],
-            ),
-            const _ThemeToggleButton(),
-          ],
-        ),
-      ],
+                child: const Icon(Icons.history, size: 22),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildQuickActions(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Quick Actions',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[800],
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
           ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionCard(
+                context,
+                'Scan & Analyze',
+                'Use AI to detect issues',
+                Icons.auto_fix_high,
+                theme.colorScheme.primary,
+                () => context.go('/scan'),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildActionCard(
+                context,
+                'Find Repair Pro',
+                'Connect with local experts',
+                Icons.build,
+                Colors.orange,
+                () => context.go('/repair-services'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         _buildActionCard(
           context,
-          'Find Repair Pro',
-          'Connect with local experts',
-          Icons.build,
-          Colors.orange,
-          () => context.go('/repair-services'),
+          'View History',
+          'Revisit your past fixes',
+          Icons.history_toggle_off,
+          Colors.teal,
+          () => context.go('/history'),
         ),
       ],
     );
@@ -178,16 +281,17 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
     Color color,
     VoidCallback onTap,
   ) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.cardColor,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -211,16 +315,15 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
             const SizedBox(height: 16),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[800],
               ),
             ),
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
               ),
             ),
           ],
@@ -230,6 +333,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   }
 
   Widget _buildRecentFixes(BuildContext context) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -238,9 +342,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
           children: [
             Text(
               'Recent Fixes',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[800],
               ),
             ),
             TextButton(
@@ -273,11 +376,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
                 margin: const EdgeInsets.only(right: 16),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: theme.cardColor,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -321,16 +424,15 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
                     const SizedBox(height: 12),
                     Text(
                       fix['title']!,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       fix['time']!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
                       ),
                     ),
                   ],
@@ -344,14 +446,14 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   }
 
   Widget _buildPopularCategories(BuildContext context) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Popular Categories',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+          style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w600,
-            color: Colors.grey[800],
           ),
         ),
         const SizedBox(height: 16),
@@ -374,16 +476,17 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
   }
 
   Widget _buildCategoryCard(BuildContext context, String title, IconData icon, Color color) {
+    final theme = Theme.of(context);
     return GestureDetector(
-      onTap: () => context.go('/camera'),
+      onTap: () => context.go('/repair-services'),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -409,9 +512,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> with WidgetsB
             Flexible(
               child: Text(
                 title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith( // Smaller text
+                style: theme.textTheme.bodySmall?.copyWith( // Smaller text
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 1, // Force single line

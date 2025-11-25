@@ -8,6 +8,10 @@ class AppUser {
     required this.moneySaved,
     required this.servicesUsed,
     required this.isProMember,
+    required this.avatarUrl,
+    required this.role,
+    required this.serviceCategory,
+    required this.panNumber,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
@@ -20,6 +24,10 @@ class AppUser {
       moneySaved: (json['moneySaved'] ?? 0) as num,
       servicesUsed: (json['servicesUsed'] ?? 0) as num,
       isProMember: (json['isProMember'] ?? false) as bool,
+      avatarUrl: (json['avatarUrl'] ?? '') as String,
+      role: (json['role'] ?? 'user') as String,
+      serviceCategory: (json['serviceCategory'] ?? '') as String,
+      panNumber: (json['panNumber'] ?? '') as String,
     );
   }
 
@@ -31,6 +39,10 @@ class AppUser {
   final num moneySaved;
   final num servicesUsed;
   final bool isProMember;
+  final String avatarUrl;
+  final String role;
+  final String serviceCategory;
+  final String panNumber;
 
   AppUser copyWith({
     String? fullName,
@@ -39,6 +51,10 @@ class AppUser {
     num? moneySaved,
     num? servicesUsed,
     bool? isProMember,
+    String? avatarUrl,
+    String? role,
+    String? serviceCategory,
+    String? panNumber,
   }) {
     return AppUser(
       id: id,
@@ -49,6 +65,10 @@ class AppUser {
       moneySaved: moneySaved ?? this.moneySaved,
       servicesUsed: servicesUsed ?? this.servicesUsed,
       isProMember: isProMember ?? this.isProMember,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      role: role ?? this.role,
+      serviceCategory: serviceCategory ?? this.serviceCategory,
+      panNumber: panNumber ?? this.panNumber,
     );
   }
 }

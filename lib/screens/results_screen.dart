@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/analysis_service.dart';
+import '../services/api_client.dart';
 
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({super.key});
@@ -13,6 +16,9 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
   bool _isAnalyzing = true;
   String? _imagePath;
   Map<String, dynamic>? _analysisResult;
+  final TextEditingController _chatController = TextEditingController();
+  final List<_ChatMessage> _messages = [];
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -41,37 +47,50 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
   @override
   void dispose() {
     _tabController.dispose();
+    _chatController.dispose();
     super.dispose();
+  }
+
+  String _cleanText(String value) {
+    var text = value;
+    // Remove basic Markdown bold markers that may appear in the AI response.
+    text = text.replaceAll('**', '');
+    return text.trim();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Scaffold(
-      resizeToAvoidBottomInset: false,
-      backgroundColor: Colors.grey[50],
+      resizeToAvoidBottomInset: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          icon: Icon(Icons.arrow_back, color: theme.appBarTheme.iconTheme?.color ?? theme.iconTheme.color),
           onPressed: () => context.pop(),
         ),
-        title: const Text(
+        title: Text(
           'Analysis Results',
-          style: TextStyle(color: Colors.black87),
+          style: theme.textTheme.titleMedium,
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.share, color: Colors.black87),
+            icon: Icon(Icons.share, color: theme.appBarTheme.iconTheme?.color ?? theme.iconTheme.color),
             onPressed: () {},
           ),
         ],
       ),
-      body: _isAnalyzing ? _buildAnalyzingView() : _buildResultsView(),
+      body: _isAnalyzing
+          ? _buildAnalyzingView()
+          : SafeArea(child: _buildResultsView()),
     );
   }
 
   Widget _buildAnalyzingView() {
+    final theme = Theme.of(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -80,31 +99,28 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             width: 120,
             height: 120,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              color: theme.colorScheme.primary.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.psychology,
               size: 60,
-              color: Color(0xFF6366F1),
+              color: theme.colorScheme.primary,
             ),
           ),
           const SizedBox(height: 32),
-          const Text(
+          Text(
             'Analyzing your photo...',
-            style: TextStyle(
-              fontSize: 24,
+            style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Our AI is identifying the problem and\nfinding the best solutions',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
             ),
           ),
           const SizedBox(height: 32),
@@ -116,83 +132,36 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
     );
   }
 
+  Future<void> _openVideo(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      final success = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open video link.')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open video link.')),
+      );
+    }
+  }
+
   Widget _buildResultsView() {
+    final theme = Theme.of(context);
     return Column(
       children: [
-        // Problem identification
-        Container(
-          margin: const EdgeInsets.all(20),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.warning_amber,
-                      color: Colors.orange,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Problem Identified',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _analysisResult?['problem'] ?? 'Problem identified',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _analysisResult?['cause'] ?? 'Analysis completed',
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-
         // Tab bar
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: theme.cardColor,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -201,16 +170,16 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
           child: TabBar(
             controller: _tabController,
             indicator: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
+              color: theme.colorScheme.primary,
               borderRadius: BorderRadius.circular(12),
             ),
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.grey[600],
+            labelColor: theme.colorScheme.onPrimary,
+            unselectedLabelColor: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
             labelStyle: const TextStyle(fontWeight: FontWeight.w600),
             tabs: const [
               Tab(text: 'DIY Fix'),
               Tab(text: 'Video Guide'),
-              Tab(text: 'Get Help'),
+              Tab(text: 'Chat'),
             ],
           ),
         ),
@@ -222,7 +191,7 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             children: [
               _buildDIYFixTab(),
               _buildVideoGuideTab(),
-              _buildGetHelpTab(),
+              _buildChatTab(),
             ],
           ),
         ),
@@ -230,7 +199,130 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
     );
   }
 
+  Widget _buildChatTab() {
+    final theme = Theme.of(context);
+    final contextText = _analysisResult?['cause']?.toString() ?? '';
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+            reverse: true,
+            itemCount: _messages.length,
+            itemBuilder: (context, index) {
+              final message = _messages[_messages.length - 1 - index];
+              final isUser = message.isUser;
+              return Align(
+                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    message.text,
+                    style: TextStyle(
+                      color: isUser
+                          ? theme.colorScheme.onPrimary
+                          : theme.textTheme.bodyMedium?.color,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _chatController,
+                  minLines: 1,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    hintText: 'Ask a follow-up question...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                    ),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: _isSending
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send),
+                color: Theme.of(context).colorScheme.primary,
+                onPressed: _isSending
+                    ? null
+                    : () {
+                        final text = _chatController.text.trim();
+                        if (text.isEmpty) return;
+                        _sendChatMessage(text, contextText);
+                      },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _sendChatMessage(String text, String contextText) async {
+    setState(() {
+      _messages.add(_ChatMessage(text: text, isUser: true));
+      _chatController.clear();
+      _isSending = true;
+    });
+
+    try {
+      final answer = await AnalysisService.instance.chat(
+        question: text,
+        context: contextText,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _messages.add(_ChatMessage(text: answer, isUser: false));
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
+
   Widget _buildDIYFixTab() {
+    final theme = Theme.of(context);
     final solution = _analysisResult?['solution'] as List<dynamic>? ?? [];
     final tools = _analysisResult?['tools'] as List<dynamic>? ?? [];
     final difficulty = _analysisResult?['difficulty'] as String? ?? 'Medium';
@@ -247,11 +339,11 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             margin: const EdgeInsets.only(bottom: 20),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: theme.cardColor,
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -263,20 +355,17 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Difficulty',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         difficulty,
-                        style: const TextStyle(
-                          fontSize: 16,
+                        style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
                         ),
                       ),
                     ],
@@ -286,20 +375,17 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Estimated Time',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         estimatedTime,
-                        style: const TextStyle(
-                          fontSize: 16,
+                        style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
                         ),
                       ),
                     ],
@@ -311,12 +397,10 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
           
           // Safety Precautions
           if (safety.isNotEmpty) ...[
-            const Text(
+            Text(
               'Safety Precautions',
-              style: TextStyle(
-                fontSize: 20,
+              style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
               ),
             ),
             const SizedBox(height: 16),
@@ -335,10 +419,9 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
                     children: [
                       const Icon(Icons.warning, color: Colors.red, size: 20),
                       const SizedBox(width: 8),
-                      const Text(
+                      Text(
                         'Important Safety Notes',
-                        style: TextStyle(
-                          fontSize: 16,
+                        style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: Colors.red,
                         ),
@@ -354,10 +437,8 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
                         const Text('• ', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                         Expanded(
                           child: Text(
-                            precaution.toString(),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black87,
+                            _cleanText(precaution.toString()),
+                            style: theme.textTheme.bodySmall?.copyWith(
                               height: 1.4,
                             ),
                           ),
@@ -372,12 +453,10 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
           
           // Required Tools
           if (tools.isNotEmpty) ...[
-            const Text(
+            Text(
               'Required Tools',
-              style: TextStyle(
-                fontSize: 20,
+              style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
               ),
             ),
             const SizedBox(height: 16),
@@ -405,11 +484,8 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
                         const Icon(Icons.check_circle, color: Colors.green, size: 16),
                         const SizedBox(width: 8),
                         Text(
-                          tool.toString(),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
+                          _cleanText(tool.toString()),
+                          style: theme.textTheme.bodySmall,
                         ),
                       ],
                     ),
@@ -420,18 +496,16 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
           ],
           
           // Step-by-Step Solution
-          const Text(
+          Text(
             'Step-by-Step Fix',
-            style: TextStyle(
-              fontSize: 20,
+            style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
             ),
           ),
           const SizedBox(height: 16),
           ...solution.asMap().entries.map((entry) {
             final index = entry.key;
-            final step = entry.value.toString();
+            final step = _cleanText(entry.value.toString());
             return _buildStepCard(
               '${index + 1}',
               step.length > 50 ? step.substring(0, 50) + '...' : step,
@@ -445,7 +519,74 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () async {
+                final rating = await showDialog<int>(
+                  context: context,
+                  builder: (dialogContext) {
+                    int selected = 5;
+                    return StatefulBuilder(
+                      builder: (context, setState) {
+                        return AlertDialog(
+                          title: const Text('How well did this fix work?'),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(5, (index) {
+                                  final starIndex = index + 1;
+                                  final isFilled = starIndex <= selected;
+                                  return IconButton(
+                                    icon: Icon(
+                                      isFilled ? Icons.star : Icons.star_border,
+                                      color: Colors.amber,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        selected = starIndex;
+                                      });
+                                    },
+                                  );
+                                }),
+                              ),
+                            ],
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(selected),
+                              child: const Text('Submit'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                );
+
+                if (rating == null) return;
+
+                try {
+                  await ApiClient.instance.post(
+                    '/api/users/mark-fixed',
+                    body: {'rating': rating},
+                    authenticated: true,
+                  );
+
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Thanks! Your fix was marked as completed.')),
+                  );
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to submit rating: $error')),
+                  );
+                }
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -469,15 +610,16 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
   }
 
   Widget _buildStepCard(String step, String title, String description, IconData icon, Color color) {
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -511,18 +653,15 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 16,
+                  style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
                     height: 1.4,
                   ),
                 ),
@@ -559,21 +698,21 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             'Home Repair Pro',
             '8:45',
             '4.8',
-            'https://example.com/video1',
+            'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
           ),
           _buildVideoCard(
             'Quick Faucet Repair in 5 Minutes',
             'DIY Master',
             '5:12',
             '4.6',
-            'https://example.com/video2',
+            'https://www.youtube.com/watch?v=3GwjfUFyY6M',
           ),
           _buildVideoCard(
             'Professional Faucet Repair Techniques',
             'Plumbing Expert',
             '12:30',
             '4.9',
-            'https://example.com/video3',
+            'https://www.youtube.com/watch?v=oHg5SJYRHA0',
           ),
         ],
       ),
@@ -581,301 +720,119 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
   }
 
   Widget _buildVideoCard(String title, String channel, String duration, String rating, String url) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Video thumbnail
-          Container(
-            height: 200,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+    return InkWell(
+      onTap: () => _openVideo(url),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-            child: Stack(
-              children: [
-                const Center(
-                  child: Icon(
-                    Icons.play_circle_filled,
-                    size: 60,
-                    color: Colors.white,
-                  ),
-                ),
-                Positioned(
-                  bottom: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(4),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Video thumbnail
+            Container(
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: Stack(
+                children: [
+                  const Center(
+                    child: Icon(
+                      Icons.play_circle_filled,
+                      size: 60,
+                      color: Colors.white,
                     ),
-                    child: Text(
-                      duration,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      channel,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.star,
-                          color: Colors.amber,
-                          size: 16,
+                      child: Text(
+                        duration,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          rating,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        channel,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star,
+                            color: Colors.amber,
+                            size: 16,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+                          const SizedBox(width: 4),
+                          Text(
+                            rating,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _buildGetHelpTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), // Added bottom padding
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Get Professional Help',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildServiceCard(
-            'Mike\'s Plumbing',
-            '4.9',
-            '0.8 miles away',
-            'Rs 9,975/hour',
-            'Available now',
-            Colors.green,
-          ),
-          _buildServiceCard(
-            'Quick Fix Services',
-            '4.7',
-            '1.2 miles away',
-            'Rs 8,645/hour',
-            'Available in 2 hours',
-            Colors.orange,
-          ),
-          _buildServiceCard(
-            'Pro Repair Co.',
-            '4.8',
-            '2.1 miles away',
-            'Rs 11,305/hour',
-            'Available tomorrow',
-            Colors.blue,
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => context.go('/repair-services'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'View All Services',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class _ChatMessage {
+  _ChatMessage({required this.text, required this.isUser});
 
-  Widget _buildServiceCard(String name, String rating, String distance, String price, String availability, Color statusColor) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(25),
-                ),
-                child: const Icon(
-                  Icons.person,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.star,
-                          color: Colors.amber,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          rating,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Text(
-                          distance,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  availability,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                price,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Contact',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  final String text;
+  final bool isUser;
 }

@@ -516,7 +516,7 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      await AuthService.instance.login(
+      final user = await AuthService.instance.login(
         email: email,
         password: password,
         rememberMe: _rememberMe,
@@ -526,10 +526,20 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Welcome back!')),
       );
-      context.go('/');
+      if (user.role == 'provider') {
+        context.go('/provider-dashboard');
+      } else {
+        context.go('/');
+      }
     } on ApiException catch (error) {
+      String message = error.message;
+      final lower = message.toLowerCase();
+      if (lower.contains('invalid') && lower.contains('credential')) {
+        message = 'Email or password is incorrect.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
+        SnackBar(content: Text(message)),
       );
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -46,4 +46,22 @@ class AnalysisService {
     if (lower.endsWith('.webp')) return 'webp';
     return 'jpeg';
   }
+
+  Future<String> chat({required String question, String? context}) async {
+    final response = await _apiClient.post(
+      '/api/analysis/chat',
+      body: {
+        'question': question,
+        if (context != null && context.trim().isNotEmpty) 'context': context,
+      },
+    );
+
+    final success = response['success'] == true;
+    if (!success) {
+      final message = response['message']?.toString() ?? 'Failed to get AI response.';
+      throw ApiException(message, statusCode: response['statusCode'] as int?);
+    }
+
+    return response['answer']?.toString() ?? 'No answer generated.';
+  }
 }

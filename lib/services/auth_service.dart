@@ -40,6 +40,38 @@ class AuthService {
     return currentUser!;
   }
 
+  Future<AppUser> registerProvider({
+    required String businessName,
+    required String email,
+    required String phone,
+    String? panNumber,
+    required String password,
+    String? serviceCategory,
+  }) async {
+    final response = await _apiClient.post(
+      '/api/auth/register-provider',
+      body: {
+        'fullName': businessName,
+        'email': email,
+        'phone': phone,
+        'password': password,
+        if (panNumber != null && panNumber.isNotEmpty) 'panNumber': panNumber,
+        if (serviceCategory != null) 'serviceCategory': serviceCategory,
+      },
+    );
+
+    final token = response['token']?.toString();
+    final userData = response['user'] as Map<String, dynamic>?;
+
+    if (token == null || userData == null) {
+      throw ApiException('Invalid provider registration response');
+    }
+
+    await TokenStorage.saveToken(token);
+    currentUser = AppUser.fromJson(userData);
+    return currentUser!;
+  }
+
   Future<AppUser> login({
     required String email,
     required String password,

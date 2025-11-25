@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -5,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/analysis_service.dart';
+import '../services/api_client.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -134,18 +137,7 @@ class _AnalysisResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (result == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.4),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Text(
-          'Your step-by-step solution will appear here after analysis.',
-          style: TextStyle(color: Colors.white70),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     return Container(
@@ -160,38 +152,14 @@ class _AnalysisResultCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Recommended Steps',
+            'Quick Summary',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
           ),
           const SizedBox(height: 12),
-          if (result!.steps.isEmpty)
-            Text(result!.summary, style: const TextStyle(color: Colors.white70))
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ...result!.steps.asMap().entries.map(
-                  (entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${entry.key + 1}. ',
-                          style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold),
-                        ),
-                        Expanded(
-                          child: Text(
-                            entry.value.trim(),
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          Text(
+            result!.summary,
+            style: const TextStyle(color: Colors.white70),
+          ),
         ],
       ),
     );
@@ -497,6 +465,57 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _saveAnalysisToHistory({
+    required String problem,
+    required String cause,
+    required List<String> solution,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('analysis_history');
+      final List<dynamic> list = raw != null ? jsonDecode(raw) as List<dynamic> : <dynamic>[];
+
+      final entry = <String, dynamic>{
+        'id': DateTime.now().toIso8601String(),
+        'problem': problem,
+        'cause': cause,
+        'solution': solution,
+        'createdAt': DateTime.now().toIso8601String(),
+      };
+
+      list.insert(0, entry);
+
+      // Keep only the latest 20 entries
+      if (list.length > 20) {
+        list.removeRange(20, list.length);
+      }
+
+      await prefs.setString('analysis_history', jsonEncode(list));
+    } catch (_) {
+      // Ignore history save errors to avoid breaking main flow
+    }
+  }
+
+  Future<void> _saveAnalysisToBackend({
+    required String problem,
+    required String cause,
+    required List<String> solution,
+  }) async {
+    try {
+      await ApiClient.instance.post(
+        '/api/history',
+        body: {
+          'problem': problem,
+          'cause': cause,
+          'solution': solution,
+        },
+        authenticated: true,
+      );
+    } catch (_) {
+      // Ignore backend history errors; core flow should still work
+    }
+  }
+
   Future<void> _disposeCameraController() async {
     final controller = _cameraController;
     if (controller != null) {
@@ -604,11 +623,19 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       );
 
       if (!mounted) return;
-      setState(() {
-        _analysisResult = result;
-      });
+      // Do not show results on the scan page; they are displayed on the dedicated results screen.
 
       final description = _descriptionController.text.trim();
+      await _saveAnalysisToHistory(
+        problem: description.isEmpty ? 'Detected problem' : description,
+        cause: result.summary,
+        solution: result.steps,
+      );
+      await _saveAnalysisToBackend(
+        problem: description.isEmpty ? 'Detected problem' : description,
+        cause: result.summary,
+        solution: result.steps,
+      );
       context.push(
         '/results',
         extra: <String, dynamic>{
@@ -674,7 +701,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                           onRequest: _cameraGranted || _checkingPermission ? null : _requestCameraPermission,
                         ),
                       _TopControls(
-                        onBack: () => context.pop(),
+                        onBack: () => context.go('/'),
                         onOpenGallery: () {
                           _handlePickFromGallery();
                         },

@@ -38,9 +38,34 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  totalRatingsCount: {
+    type: Number,
+    default: 0
+  },
+  totalRatingsSum: {
+    type: Number,
+    default: 0
+  },
   isProMember: {
     type: Boolean,
     default: false
+  },
+  avatarUrl: {
+    type: String,
+    default: ''
+  },
+  role: {
+    type: String,
+    enum: ['user', 'provider', 'admin'],
+    default: 'user'
+  },
+  serviceCategory: {
+    type: String,
+    default: ''
+  },
+  panNumber: {
+    type: String,
+    default: ''
   },
   createdAt: {
     type: Date,

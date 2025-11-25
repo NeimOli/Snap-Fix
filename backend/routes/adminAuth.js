@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Job = require('../models/Job');
 
 const router = express.Router();
 
@@ -101,7 +102,7 @@ router.get('/users', verifyAdmin, async (req, res) => {
   try {
     const users = await User.find()
       .sort({ createdAt: -1 })
-      .select('fullName email phone isProMember createdAt');
+      .select('fullName email phone isProMember createdAt role serviceCategory panNumber problemsFixed moneySaved servicesUsed');
 
     res.json({
       success: true,
@@ -196,6 +197,7 @@ router.get('/profile', verifyAdmin, (req, res) => {
 router.get('/dashboard', verifyAdmin, async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
+    const providerCount = await User.countDocuments({ role: 'provider' });
     const recentUsersFromDb = await User.find()
       .sort({ createdAt: -1 })
       .limit(5)
@@ -208,19 +210,68 @@ router.get('/dashboard', verifyAdmin, async (req, res) => {
       status: user.isProMember ? 'Pro Member' : 'Basic Member'
     }));
 
+    // Compute real revenue from completed jobs
+    const revenueAgg = await Job.aggregate([
+      { $match: { status: 'completed' } },
+      { $group: { _id: null, total: { $sum: '$totalPrice' } } },
+    ]);
+
+    const totalRevenue = revenueAgg[0]?.total || 0;
+
+    // Compute weekly activity: number of jobs created in the last 7 days
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(now.getDate() - 6); // include today + 6 previous days
+
+    const recentJobsForWeek = await Job.find({
+      createdAt: { $gte: new Date(sevenDaysAgo.setHours(0, 0, 0, 0)) },
+    }).select('createdAt');
+
+    const weeklyActivity = Array(7).fill(0);
+    for (const job of recentJobsForWeek) {
+      const createdAt = job.createdAt || job._id.getTimestamp?.() || null;
+      if (!createdAt) continue;
+
+      const dayDiff = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+      const index = 6 - dayDiff; // index 6 = today, 0 = 6 days ago
+      if (index >= 0 && index < 7) {
+        weeklyActivity[index] += 1;
+      }
+    }
+
+    // Recent analyses: use recent jobs as recent activity (user, service type, date, status)
+    const recentJobs = await Job.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('user', 'fullName email')
+      .populate('service', 'name category');
+
+    const recentAnalyses = recentJobs.map((job) => {
+      const userName = job.user && job.user.fullName ? job.user.fullName : 'User';
+      const serviceCategory = job.service && job.service.category
+        ? job.service.category
+        : job.service && job.service.name
+          ? job.service.name
+          : 'Service';
+      const date = job.createdAt ? job.createdAt.toISOString().split('T')[0] : '';
+
+      return {
+        user: userName,
+        type: serviceCategory,
+        date,
+        status: job.status,
+      };
+    });
+
     const dashboardData = {
       stats: {
         totalUsers,
-        activeAnalyses: 45,
-        revenue: 245000, // in NPR
-        weeklyActivity: [1, 3, 2, 5, 4, 6, 7]
+        activeProviders: providerCount,
+        revenue: totalRevenue, // in NPR, from completed jobs
+        weeklyActivity,
       },
       recentUsers,
-      recentAnalyses: [
-        { user: 'John Doe', type: 'Plumbing', date: '2024-01-15', status: 'Completed' },
-        { user: 'Jane Smith', type: 'Electrical', date: '2024-01-14', status: 'In Progress' },
-        { user: 'Mike Johnson', type: 'Appliance', date: '2024-01-13', status: 'Completed' }
-      ]
+      recentAnalyses,
     };
 
     res.json({

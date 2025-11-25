@@ -23,6 +23,8 @@ app.use('/api/services', require('./routes/services'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/adminAuth'));
 app.use('/api/analysis', require('./routes/analysis'));
+app.use('/api/history', require('./routes/history'));
+app.use('/api/jobs', require('./routes/jobs'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

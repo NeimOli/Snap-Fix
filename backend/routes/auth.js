@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const Service = require('../models/Service');
 const router = express.Router();
 
 // Generate JWT Token
@@ -64,7 +65,11 @@ router.post('/register', [
         problemsFixed: user.problemsFixed,
         moneySaved: user.moneySaved,
         servicesUsed: user.servicesUsed,
-        isProMember: user.isProMember
+        isProMember: user.isProMember,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        serviceCategory: user.serviceCategory,
+        panNumber: user.panNumber,
       }
     });
   } catch (error) {
@@ -72,6 +77,97 @@ router.post('/register', [
     res.status(500).json({
       success: false,
       message: 'Server error during registration'
+    });
+  }
+});
+
+// @route   POST /api/auth/register-provider
+// @desc    Register a new service provider
+// @access  Public
+router.post('/register-provider', [
+  body('fullName').trim().notEmpty().withMessage('Business name is required'),
+  body('email').isEmail().withMessage('Please provide a valid email'),
+  body('phone').trim().notEmpty().withMessage('Phone number is required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('serviceCategory').optional().trim(),
+  body('panNumber').optional().trim(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array(),
+      });
+    }
+
+    const { fullName, email, phone, password, serviceCategory, panNumber } = req.body;
+
+    const existing = await User.findOne({ email });
+    if (existing) {
+      console.warn(`[Auth] Provider register failed - existing user ${email}`);
+      return res.status(400).json({
+        success: false,
+        message: 'Account already exists with this email',
+      });
+    }
+
+    const user = await User.create({
+      fullName,
+      email,
+      phone,
+      password,
+      role: 'provider',
+      serviceCategory: serviceCategory || '',
+      panNumber: panNumber || '',
+    });
+
+    // Also create a basic Service listing so this provider appears in /api/services
+    try {
+      await Service.create({
+        name: fullName,
+        category: serviceCategory || 'All',
+        rating: 0,
+        reviews: 0,
+        distance: 1, // placeholder; real distance can be added later
+        price: 'Rs 0/hour',
+        ratePerHour: 0,
+        availability: 'Available now',
+        services: [serviceCategory || 'General'],
+        phone,
+        email,
+        imageUrl: '',
+      });
+    } catch (serviceError) {
+      console.error('[Auth] Failed to create Service for provider', email, serviceError);
+    }
+
+    const token = generateToken(user._id);
+
+    console.log(`[Auth] Provider register success for ${email}`);
+    res.status(201).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        problemsFixed: user.problemsFixed,
+        moneySaved: user.moneySaved,
+        servicesUsed: user.servicesUsed,
+        isProMember: user.isProMember,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        serviceCategory: user.serviceCategory,
+        panNumber: user.panNumber,
+      },
+    });
+  } catch (error) {
+    console.error(`[Auth] Provider register error for ${req.body?.email || 'unknown'}:`, error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during provider registration',
     });
   }
 });
@@ -129,7 +225,11 @@ router.post('/login', [
         problemsFixed: user.problemsFixed,
         moneySaved: user.moneySaved,
         servicesUsed: user.servicesUsed,
-        isProMember: user.isProMember
+        isProMember: user.isProMember,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        serviceCategory: user.serviceCategory,
+        panNumber: user.panNumber,
       }
     });
   } catch (error) {
@@ -157,7 +257,11 @@ router.get('/me', require('../middleware/auth').protect, async (req, res) => {
         problemsFixed: user.problemsFixed,
         moneySaved: user.moneySaved,
         servicesUsed: user.servicesUsed,
-        isProMember: user.isProMember
+        isProMember: user.isProMember,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        serviceCategory: user.serviceCategory,
+        panNumber: user.panNumber,
       }
     });
   } catch (error) {

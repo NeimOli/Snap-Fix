@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,27 +14,103 @@ class StartPage extends StatefulWidget {
   State<StartPage> createState() => _StartPageState();
 }
 
-class _StartPageState extends State<StartPage> {
+class _StartPageState extends State<StartPage> with SingleTickerProviderStateMixin {
+  late final PageController _adsController;
+  int _currentAdPage = 0;
+  Timer? _adsTimer;
+
+  late final AnimationController _animController;
+  late final Animation<double> _logoOpacity;
+  late final Animation<double> _titleOpacity;
+  late final Animation<double> _cardOpacity;
+  late final Animation<double> _adsOpacity;
+
+  final List<Map<String, String>> _ads = const [
+    {
+      'title': 'Scan & fix in minutes',
+      'description': 'Use AI to detect issues and get instant DIY steps.',
+    },
+    {
+      'title': 'Find trusted pros',
+      'description': 'Book verified technicians when you need extra help.',
+    },
+    {
+      'title': 'Track your history',
+      'description': 'All your past analyses saved in one place.',
+    },
+  ];
+
   @override
   void initState() {
     super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+
+    _logoOpacity = CurvedAnimation(
+      parent: _animController,
+      curve: const Interval(0.0, 0.3, curve: Curves.easeOut),
+    );
+    _titleOpacity = CurvedAnimation(
+      parent: _animController,
+      curve: const Interval(0.2, 0.5, curve: Curves.easeOut),
+    );
+    _cardOpacity = CurvedAnimation(
+      parent: _animController,
+      curve: const Interval(0.4, 0.9, curve: Curves.easeOut),
+    );
+    _adsOpacity = CurvedAnimation(
+      parent: _animController,
+      curve: const Interval(0.6, 1.0, curve: Curves.easeOut),
+    );
+
+    _adsController = PageController(viewportFraction: 0.8);
+    _startAdsAutoScroll();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationPermissionService.requestPermissionIfNeeded(context);
       CameraPermissionService.requestPermissionIfNeeded(context);
     });
+
+    _animController.forward();
+  }
+
+  void _startAdsAutoScroll() {
+    _adsTimer?.cancel();
+    if (_ads.isEmpty) return;
+
+    _adsTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || !_adsController.hasClients) return;
+      final nextPage = (_currentAdPage + 1) % _ads.length;
+      _adsController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+      _currentAdPage = nextPage;
+    });
+  }
+
+  @override
+  void dispose() {
+    _adsTimer?.cancel();
+    _adsController.dispose();
+    _animController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              const Color(0xFF5B21B6), // Darker purple
-              const Color(0xFF7C3AED), // Medium purple
+              Color(0xFF4C1D95),
+              Color(0xFF6D28D9),
+              Color(0xFF7C3AED),
             ],
           ),
         ),
@@ -45,31 +123,43 @@ class _StartPageState extends State<StartPage> {
                     children: [
                       const SizedBox(height: 20),
                       // App Icon
-                      _buildAppIcon(),
+                      FadeTransition(
+                        opacity: _logoOpacity,
+                        child: _buildAppIcon(),
+                      ),
                       const SizedBox(height: 24),
                       // Welcome Message
-                      Text(
-                        'Welcome to SnapFix',
-                        style: GoogleFonts.inter(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Tagline
-                      Text(
-                        'Instant Photo-Based Problem Solver',
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white.withOpacity(0.9),
+                      FadeTransition(
+                        opacity: _titleOpacity,
+                        child: Column(
+                          children: [
+                            Text(
+                              'Welcome to SnapFix',
+                              style: GoogleFonts.inter(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Instant Photo-Based Problem Solver',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w400,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 40),
                       // Get Started Card
-                      _buildGetStartedCard(context),
+                      FadeTransition(
+                        opacity: _cardOpacity,
+                        child: _buildGetStartedCard(context),
+                      ),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -78,12 +168,23 @@ class _StartPageState extends State<StartPage> {
               // Footer
               Padding(
                 padding: const EdgeInsets.all(20.0),
-                child: Text(
-                  'Built with ❤️ for SnapFix',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    color: Colors.white.withOpacity(0.8),
+                child: FadeTransition(
+                  opacity: _adsOpacity,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _buildAdsSection(),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Built with ❤️ for SnapFix',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -174,6 +275,15 @@ class _StartPageState extends State<StartPage> {
               color: Colors.grey[900],
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Login or create an account to sync your fixes and history.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
+              color: Colors.grey[600],
+            ),
+          ),
           const SizedBox(height: 24),
           // Login Button
           _buildLoginButton(context),
@@ -183,6 +293,21 @@ class _StartPageState extends State<StartPage> {
           const SizedBox(height: 32),
           // Feature Grid
           _buildFeatureGrid(),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.center,
+            child: TextButton(
+              onPressed: () => context.go('/provider-register'),
+              child: Text(
+                'I am a service provider',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF6366F1),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -197,11 +322,11 @@ class _StartPageState extends State<StartPage> {
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6366F1),
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
           ),
-          elevation: 0,
+          elevation: 3,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -234,13 +359,13 @@ class _StartPageState extends State<StartPage> {
           context.go('/register');
         },
         style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
           side: const BorderSide(
             color: Color(0xFF6366F1),
-            width: 2,
+            width: 1.8,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
         child: Row(
@@ -322,6 +447,9 @@ class _StartPageState extends State<StartPage> {
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey.withOpacity(0.1),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -356,6 +484,83 @@ class _StartPageState extends State<StartPage> {
               color: Colors.grey[600],
             ),
             maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'What you can do with SnapFix',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[900],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 120,
+          child: PageView.builder(
+            controller: _adsController,
+            itemCount: _ads.length,
+            onPageChanged: (index) {
+              _currentAdPage = index;
+            },
+            itemBuilder: (context, index) {
+              final ad = _ads[index];
+              return _buildAdCard(
+                title: ad['title'] ?? '',
+                description: ad['description'] ?? '',
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdCard({required String title, required String description}) {
+    return Container(
+      width: 220,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFEEF2FF),
+            Color(0xFFE0ECFF),
+          ],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey[900],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: Colors.grey[700],
+            ),
+            maxLines: 3,
             overflow: TextOverflow.ellipsis,
           ),
         ],

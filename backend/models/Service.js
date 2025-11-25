@@ -7,7 +7,18 @@ const serviceSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['Plumbing', 'Electronics', 'Appliances', 'Furniture', 'All'],
+    enum: [
+      'Plumbing',
+      'Electrical',
+      'Appliances',
+      'Air Conditioning',
+      'Carpentry',
+      'Painting',
+      'General Handyman',
+      'Furniture',
+      'Electronics',
+      'Other',
+    ],
     required: true
   },
   rating: {
@@ -20,6 +31,10 @@ const serviceSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  ratingsSum: {
+    type: Number,
+    default: 0
+  },
   distance: {
     type: Number, // in miles
     required: true
@@ -27,6 +42,11 @@ const serviceSchema = new mongoose.Schema({
   price: {
     type: String,
     required: true
+  },
+  ratePerHour: {
+    type: Number,
+    default: 50,
+    min: 0,
   },
   availability: {
     type: String,
