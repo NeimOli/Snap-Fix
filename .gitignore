@@ -13,6 +13,7 @@
 migrate_working_dir/
 
 backend/.env
+backend/service-account-key.json
 
 # IntelliJ related
 *.iml
