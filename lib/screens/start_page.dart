@@ -108,9 +108,10 @@ class _StartPageState extends State<StartPage> with SingleTickerProviderStateMix
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF4C1D95),
-              Color(0xFF6D28D9),
-              Color(0xFF7C3AED),
+              Color(0xFF4C1D95), // deep purple
+              Color(0xFF6D28D9), // mid purple
+              Color(0xFF7C3AED), // bright purple
+              Color(0xFFF97316), // warm orange accent near bottom
             ],
           ),
         ),
@@ -253,7 +254,14 @@ class _StartPageState extends State<StartPage> with SingleTickerProviderStateMix
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFFFFFFF),
+            Color(0xFFF5F3FF), // very light purple tint
+          ],
+        ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
@@ -294,20 +302,6 @@ class _StartPageState extends State<StartPage> with SingleTickerProviderStateMix
           // Feature Grid
           _buildFeatureGrid(),
           const SizedBox(height: 16),
-          Align(
-            alignment: Alignment.center,
-            child: TextButton(
-              onPressed: () => context.go('/provider-register'),
-              child: Text(
-                'I am a service provider',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: const Color(0xFF6366F1),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -445,10 +439,10 @@ class _StartPageState extends State<StartPage> with SingleTickerProviderStateMix
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: Colors.white.withOpacity(0.96),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.grey.withOpacity(0.1),
+          color: Colors.deepPurple.withOpacity(0.08),
         ),
       ),
       child: Column(
@@ -457,12 +451,19 @@ class _StartPageState extends State<StartPage> with SingleTickerProviderStateMix
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF6366F1), // purple
+                  Color(0xFF22C55E), // green accent
+                ],
+              ),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               icon,
-              color: const Color(0xFF6366F1),
+              color: Colors.white,
               size: 24,
             ),
           ),
@@ -492,36 +493,76 @@ class _StartPageState extends State<StartPage> with SingleTickerProviderStateMix
   }
 
   Widget _buildAdsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'What you can do with SnapFix',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[900],
-          ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.15),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 120,
-          child: PageView.builder(
-            controller: _adsController,
-            itemCount: _ads.length,
-            onPageChanged: (index) {
-              _currentAdPage = index;
-            },
-            itemBuilder: (context, index) {
-              final ad = _ads[index];
-              return _buildAdCard(
-                title: ad['title'] ?? '',
-                description: ad['description'] ?? '',
-              );
-            },
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'What you can do with SnapFix',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 120,
+            child: PageView.builder(
+              controller: _adsController,
+              itemCount: _ads.length,
+              onPageChanged: (index) {
+                _currentAdPage = index;
+              },
+              itemBuilder: (context, index) {
+                final ad = _ads[index];
+                return AnimatedBuilder(
+                  animation: _adsController,
+                  builder: (context, child) {
+                    double page = 0;
+                    if (_adsController.hasClients && _adsController.page != null) {
+                      page = _adsController.page!;
+                    } else {
+                      page = _currentAdPage.toDouble();
+                    }
+
+                    final distance = (page - index).abs();
+                    final scale = (1 - distance * 0.12).clamp(0.9, 1.0);
+
+                    return Transform.scale(
+                      scale: scale,
+                      child: child,
+                    );
+                  },
+                  child: _buildAdCard(
+                    title: ad['title'] ?? '',
+                    description: ad['description'] ?? '',
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -540,6 +581,13 @@ class _StartPageState extends State<StartPage> with SingleTickerProviderStateMix
             Color(0xFFE0ECFF),
           ],
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -757,19 +757,16 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     }
     final String availabilityLabel = hasActiveJob ? 'Busy with a job' : 'Available now';
 
-    // Compute provider rating from user model if available
+    // Compute provider rating from AppUser if available
     double? rating;
     int reviewCount = 0;
-    try {
-      final sum = user?.totalRatingsSum;
-      final count = user?.totalRatingsCount;
-      if (sum is num && count is num && count > 0) {
+    if (user != null) {
+      final sum = user.totalRatingsSum;
+      final count = user.totalRatingsCount;
+      if (count > 0) {
         rating = sum.toDouble() / count.toDouble();
         reviewCount = count.toInt();
       }
-    } catch (_) {
-      rating = null;
-      reviewCount = 0;
     }
 
     return SingleChildScrollView(

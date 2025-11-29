@@ -7,6 +7,8 @@ class AppUser {
     required this.problemsFixed,
     required this.moneySaved,
     required this.servicesUsed,
+    required this.totalRatingsCount,
+    required this.totalRatingsSum,
     required this.isProMember,
     required this.avatarUrl,
     required this.role,
@@ -23,6 +25,8 @@ class AppUser {
       problemsFixed: (json['problemsFixed'] ?? 0) as num,
       moneySaved: (json['moneySaved'] ?? 0) as num,
       servicesUsed: (json['servicesUsed'] ?? 0) as num,
+      totalRatingsCount: (json['totalRatingsCount'] ?? 0) as num,
+      totalRatingsSum: (json['totalRatingsSum'] ?? 0) as num,
       isProMember: (json['isProMember'] ?? false) as bool,
       avatarUrl: (json['avatarUrl'] ?? '') as String,
       role: (json['role'] ?? 'user') as String,
@@ -38,6 +42,8 @@ class AppUser {
   final num problemsFixed;
   final num moneySaved;
   final num servicesUsed;
+  final num totalRatingsCount;
+  final num totalRatingsSum;
   final bool isProMember;
   final String avatarUrl;
   final String role;
@@ -50,6 +56,8 @@ class AppUser {
     num? problemsFixed,
     num? moneySaved,
     num? servicesUsed,
+    num? totalRatingsCount,
+    num? totalRatingsSum,
     bool? isProMember,
     String? avatarUrl,
     String? role,
@@ -64,6 +72,8 @@ class AppUser {
       problemsFixed: problemsFixed ?? this.problemsFixed,
       moneySaved: moneySaved ?? this.moneySaved,
       servicesUsed: servicesUsed ?? this.servicesUsed,
+      totalRatingsCount: totalRatingsCount ?? this.totalRatingsCount,
+      totalRatingsSum: totalRatingsSum ?? this.totalRatingsSum,
       isProMember: isProMember ?? this.isProMember,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       role: role ?? this.role,
