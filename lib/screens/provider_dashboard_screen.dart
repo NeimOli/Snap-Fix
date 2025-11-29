@@ -1,9 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../models/user.dart';
 
 class ProviderDashboardScreen extends StatefulWidget {
   const ProviderDashboardScreen({super.key});
@@ -19,11 +24,192 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   String? _jobsError;
   List<Map<String, dynamic>> _jobs = [];
   bool _isUpdatingJob = false;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
     _loadJobs();
+  }
+
+  Future<void> _reloadCurrentUser() async {
+    try {
+      await AuthService.instance.fetchCurrentUser();
+      if (!mounted) return;
+      setState(() {});
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _changeProviderAvatar() async {
+    try {
+      final picked = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 75);
+      if (picked == null) return;
+
+      final bytes = await picked.readAsBytes();
+      final base64Image = base64Encode(bytes);
+      final dataUrl = 'data:image/jpeg;base64,$base64Image';
+
+      final response = await ApiClient.instance.put(
+        '/api/users/avatar',
+        body: {
+          'avatarBase64': dataUrl,
+        },
+        authenticated: true,
+      );
+
+      if (response['success'] == true) {
+        await _reloadCurrentUser();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile photo updated.')),
+        );
+      } else {
+        throw Exception(response['message'] ?? 'Failed to update avatar');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating photo: $error')),
+      );
+    }
+  }
+
+  Widget _buildProviderAvatarImage(AppUser? user) {
+    final avatarUrl = user?.avatarUrl ?? '';
+    if (avatarUrl.isEmpty) {
+      return const Icon(
+        Icons.build,
+        size: 40,
+        color: Colors.white,
+      );
+    }
+
+    try {
+      final base64Part = avatarUrl.contains('base64,')
+          ? avatarUrl.split('base64,').last
+          : avatarUrl;
+      final bytes = base64Decode(base64Part);
+      return ClipOval(
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+        ),
+      );
+    } catch (_) {
+      return const Icon(
+        Icons.build,
+        size: 40,
+        color: Colors.white,
+      );
+    }
+  }
+
+  void _showProviderNotificationsDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        bool pushEnabled = true;
+        bool emailEnabled = true;
+        bool serviceUpdatesEnabled = true;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> _loadPrefsOnce() async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                setState(() {
+                  pushEnabled = prefs.getBool('notif_push') ?? true;
+                  emailEnabled = prefs.getBool('notif_email') ?? true;
+                  serviceUpdatesEnabled = prefs.getBool('notif_service_updates') ?? true;
+                });
+              } catch (_) {}
+            }
+
+            if (pushEnabled == true && emailEnabled == true && serviceUpdatesEnabled == true) {
+              _loadPrefsOnce();
+            }
+
+            Future<void> _savePrefs() async {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('notif_push', pushEnabled);
+                await prefs.setBool('notif_email', emailEnabled);
+                await prefs.setBool('notif_service_updates', serviceUpdatesEnabled);
+              } catch (_) {}
+            }
+
+            return AlertDialog(
+              title: const Text('Notification Settings'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    title: const Text('Push Notifications'),
+                    subtitle: const Text('Receive app alerts and reminders'),
+                    value: pushEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        pushEnabled = value;
+                      });
+                      _savePrefs();
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Email Notifications'),
+                    subtitle: const Text('Receive important updates by email'),
+                    value: emailEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        emailEnabled = value;
+                      });
+                      _savePrefs();
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Service Updates'),
+                    subtitle: const Text('Tips and updates about your repair services'),
+                    value: serviceUpdatesEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        serviceUpdatesEnabled = value;
+                      });
+                      _savePrefs();
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showProviderAboutDialog() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'SnapFix',
+      applicationVersion: '1.0.0',
+      applicationIcon: const Icon(
+        Icons.build,
+        size: 40,
+        color: Color(0xFF6366F1),
+      ),
+      children: const [
+        Text(
+          'SnapFix helps users connect with skilled providers like you, get AI-powered diagnostics, '
+          'and manage home repair jobs end to end.',
+        ),
+      ],
+    );
   }
 
   Future<void> _loadJobs() async {
@@ -146,7 +332,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
               ? 'Provider Dashboard'
               : _selectedIndex == 1
                   ? 'Job Requests'
-                  : 'Provider Profile',
+                  : 'Profile',
         ),
       ),
       body: SafeArea(child: body),
@@ -266,10 +452,10 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
@@ -282,12 +468,12 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Your job stats',
+            'Your Activity',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           Row(
             children: [
               _buildProfileStatChip(theme, 'Total jobs', '$totalJobs', Icons.assignment_outlined),
@@ -571,84 +757,147 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     }
     final String availabilityLabel = hasActiveJob ? 'Busy with a job' : 'Available now';
 
+    // Compute provider rating from user model if available
+    double? rating;
+    int reviewCount = 0;
+    try {
+      final sum = user?.totalRatingsSum;
+      final count = user?.totalRatingsCount;
+      if (sum is num && count is num && count > 0) {
+        rating = sum.toDouble() / count.toDouble();
+        reviewCount = count.toInt();
+      }
+    } catch (_) {
+      rating = null;
+      reviewCount = 0;
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header similar to user profile: large gradient card with centered avatar and info
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  theme.colorScheme.primary.withOpacity(0.16),
-                  theme.colorScheme.primary.withOpacity(0.04),
+                  theme.colorScheme.primary,
+                  theme.colorScheme.primary.withOpacity(0.85),
                 ],
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.colorScheme.primary.withOpacity(0.25),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-            child: Row(
+            child: Column(
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.white.withOpacity(0.15),
-                  child: Icon(
-                    Icons.build,
-                    color: theme.colorScheme.primary,
-                    size: 26,
+                GestureDetector(
+                  onTap: _changeProviderAvatar,
+                  child: Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withOpacity(0.4), width: 2),
+                    ),
+                    child: _buildProviderAvatarImage(user),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user?.fullName ?? 'Provider name',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        user?.serviceCategory.isNotEmpty == true
-                            ? user!.serviceCategory
-                            : 'Service category not set',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 16),
+                Text(
+                  user?.fullName ?? 'Provider name',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(50),
+                const SizedBox(height: 6),
+                if (user?.email != null)
+                  Text(
+                    user!.email,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: Colors.white70,
+                    ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                if (user?.phone.isNotEmpty == true) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    user!.phone,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                if (rating != null)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.star_rounded, size: 16, color: Colors.amber.shade400),
+                      Icon(Icons.star, color: Colors.amber.shade400, size: 18),
                       const SizedBox(width: 4),
                       Text(
-                        availabilityLabel,
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        rating.toStringAsFixed(1),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '($reviewCount reviews)',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
+                  )
+                else
+                  const Text(
+                    'No ratings yet',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    availabilityLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
+          // Contact details card
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -692,11 +941,111 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                   label: 'PAN Number',
                   value: user?.panNumber.isNotEmpty == true ? user!.panNumber : '-',
                 ),
+                const SizedBox(height: 8),
+                _buildContactRow(
+                  context,
+                  icon: Icons.home_repair_service_outlined,
+                  label: 'Service category',
+                  value: user?.serviceCategory.isNotEmpty == true ? user!.serviceCategory : 'Not set',
+                ),
               ],
             ),
           ),
           const SizedBox(height: 20),
           _buildProfileStatsSection(theme),
+          const SizedBox(height: 24),
+          // Settings-style options similar to user profile
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(theme.brightness == Brightness.light ? 0.05 : 0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.notifications_outlined),
+                  title: const Text('Notifications'),
+                  subtitle: const Text('Manage your notifications'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: _showProviderNotificationsDialog,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Privacy'),
+                  subtitle: const Text('Control your privacy settings'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Privacy'),
+                        content: const Text(
+                          'SnapFix uses your profile and job data only to match you with users and manage jobs. '
+                          'Your personal details are not shared publicly without your consent.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.help_outline),
+                  title: const Text('Help & Support'),
+                  subtitle: const Text('Get help and contact support'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () async {
+                    const email = 'support@snapfix.app';
+                    const subject = 'SnapFix Provider Support';
+                    final uri = Uri(
+                      scheme: 'mailto',
+                      path: email,
+                      query: 'subject=${Uri.encodeComponent(subject)}',
+                    );
+
+                    try {
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri);
+                      } else {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not open email app. Please contact support@snapfix.app'),
+                          ),
+                        );
+                      }
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not open email app. Please contact support@snapfix.app'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('About'),
+                  subtitle: const Text('App version and info'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: _showProviderAboutDialog,
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 24),
           Text(
             'How users contact you',
@@ -714,7 +1063,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton.icon(
+            child: ElevatedButton.icon(
               onPressed: () async {
                 final shouldLogout = await showDialog<bool>(
                   context: context,
@@ -745,20 +1094,28 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                 if (!context.mounted) return;
                 context.go('/login');
               },
-              icon: const Icon(Icons.logout, color: Colors.redAccent),
-              label: Text(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              label: const Text(
                 'Logout',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.redAccent,
+                style: TextStyle(
+                  color: Colors.white,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.redAccent),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
+                elevation: 4,
+                backgroundColor: Colors.redAccent,
+              ).copyWith(
+                backgroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return Colors.red.shade700;
+                  }
+                  return Colors.redAccent;
+                }),
               ),
             ),
           ),

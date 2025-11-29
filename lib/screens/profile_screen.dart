@@ -849,18 +849,6 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
             },
           ),
           _buildMenuItem(
-            'Saved Solutions',
-            'Your bookmarked fixes',
-            Icons.bookmark,
-            _showSavedSolutionsDialog,
-          ),
-          _buildMenuItem(
-            'Favorites',
-            'Liked repair services',
-            Icons.favorite,
-            _showFavoritesDialog,
-          ),
-          _buildMenuItem(
             'Location Settings',
             'Manage location permissions',
             Icons.location_on,
