@@ -38,9 +38,7 @@ class _UserJobsScreenState extends State<UserJobsScreen> {
         '/api/jobs/user',
         authenticated: true,
       );
-      final list = ((response['jobs'] as List<dynamic>?) ?? <dynamic>[])
-          .map<Map<String, dynamic>>((e) => e as Map<String, dynamic>)
-          .toList();
+      final list = (response['jobs'] as List<dynamic>? ?? <dynamic>[]).map<Map<String, dynamic>>((e) => e as Map<String, dynamic>).toList();
       setState(() {
         _isLoading = false;
         _isLoadingMore = false;
@@ -96,9 +94,13 @@ class _UserJobsScreenState extends State<UserJobsScreen> {
           final hasRating = (job['rating'] is num) && (job['rating'] ?? 0) > 0;
           return status == 'completed' && !hasRating;
         },
+        orElse: () => <String, dynamic>{},
       );
 
-      if (unratedJob != null) {
+      // Skip if no unrated jobs found
+      if (unratedJob.isEmpty) return;
+
+      if (unratedJob.isNotEmpty) {
         _isRatingDialogShown = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           showDialog(
