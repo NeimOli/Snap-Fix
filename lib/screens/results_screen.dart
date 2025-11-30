@@ -19,6 +19,9 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
   final TextEditingController _chatController = TextEditingController();
   final List<_ChatMessage> _messages = [];
   bool _isSending = false;
+  bool _isLoadingVideos = false;
+  String? _videoError;
+  List<Map<String, dynamic>> _videoGuides = [];
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
         setState(() {
           _isAnalyzing = false;
         });
+        _loadVideoGuides();
       }
     }
   }
@@ -56,6 +60,51 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
     // Remove basic Markdown bold markers that may appear in the AI response.
     text = text.replaceAll('**', '');
     return text.trim();
+  }
+
+  Future<void> _loadVideoGuides() async {
+    final problemText = _analysisResult?['problem']?.toString().trim();
+    if (problemText == null || problemText.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingVideos = true;
+      _videoError = null;
+    });
+
+    try {
+      final response = await ApiClient.instance.get(
+        '/api/analysis/videos',
+        queryParameters: {
+          'q': '$problemText repair tutorial',
+        },
+      );
+
+      if (response['success'] == true && response['videos'] is List) {
+        final List<dynamic> raw = response['videos'] as List<dynamic>;
+        setState(() {
+          _videoGuides = raw
+              .whereType<Map<String, dynamic>>()
+              .toList();
+        });
+      } else {
+        setState(() {
+          _videoGuides = [];
+        });
+      }
+    } catch (error) {
+      setState(() {
+        _videoError = error.toString();
+        _videoGuides = [];
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingVideos = false;
+        });
+      }
+    }
   }
 
   @override
@@ -680,7 +729,7 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
 
   Widget _buildVideoGuideTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100), // Added bottom padding
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -693,27 +742,38 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             ),
           ),
           const SizedBox(height: 16),
-          _buildVideoCard(
-            'How to Fix a Leaky Faucet - Complete Guide',
-            'Home Repair Pro',
-            '8:45',
-            '4.8',
-            'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-          ),
-          _buildVideoCard(
-            'Quick Faucet Repair in 5 Minutes',
-            'DIY Master',
-            '5:12',
-            '4.6',
-            'https://www.youtube.com/watch?v=3GwjfUFyY6M',
-          ),
-          _buildVideoCard(
-            'Professional Faucet Repair Techniques',
-            'Plumbing Expert',
-            '12:30',
-            '4.9',
-            'https://www.youtube.com/watch?v=oHg5SJYRHA0',
-          ),
+          if (_isLoadingVideos) ...[
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(top: 40),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ] else if (_videoError != null) ...[
+            Text(
+              'Could not load videos: $_videoError',
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+          ] else if (_videoGuides.isEmpty) ...[
+            const Text(
+              'No video guides found for this problem yet.',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ] else ...[
+            ..._videoGuides.map((video) {
+              final title = video['title']?.toString() ?? 'Video tutorial';
+              final channel = video['channel']?.toString() ?? 'YouTube';
+              final duration = video['duration']?.toString() ?? '';
+              final url = video['url']?.toString() ?? '';
+              return _buildVideoCard(
+                title,
+                channel,
+                duration,
+                '4.7',
+                url,
+              );
+            }).toList(),
+          ],
         ],
       ),
     );
@@ -743,8 +803,17 @@ class _ResultsScreenState extends State<ResultsScreen> with TickerProviderStateM
             Container(
               height: 200,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                color: Colors.grey[300],
+                image: url.isNotEmpty
+                    ? DecorationImage(
+                        image: NetworkImage(
+                          // Derive thumbnail URL from videoGuides when available; fallback to YouTube thumbnail pattern
+                          'https://i.ytimg.com/vi/${Uri.parse(url).queryParameters['v']}/hqdefault.jpg',
+                        ),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
               child: Stack(
                 children: [

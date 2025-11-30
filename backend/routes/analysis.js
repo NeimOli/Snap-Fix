@@ -5,6 +5,22 @@ const router = express.Router();
 
 const DEFAULT_MODEL = process.env.HUGGING_FACE_MODEL || 'llava-hf/llava-1.5-7b-hf';
 
+function parseYouTubeDuration(isoDuration) {
+  if (!isoDuration || typeof isoDuration !== 'string') return null;
+
+  const match = isoDuration.match(/PT(?:([0-9]+)H)?(?:([0-9]+)M)?(?:([0-9]+)S)?/);
+  if (!match) return null;
+
+  const hours = parseInt(match[1] || '0', 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const seconds = parseInt(match[3] || '0', 10);
+
+  const totalMinutes = hours * 60 + minutes;
+  const mm = totalMinutes.toString();
+  const ss = seconds.toString().padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
 function normalizeBase64(imageBase64) {
   if (!imageBase64) return null;
   const commaIndex = imageBase64.indexOf('base64,');
@@ -390,6 +406,127 @@ router.post('/chat', async (req, res) => {
       success: false,
       message: 'Failed to process chat message. Please try again.',
       error: hfMessage,
+    });
+  }
+});
+
+// YouTube video suggestions based on problem description/question
+router.get('/videos', async (req, res) => {
+  try {
+    const query = (req.query.q || '').toString().trim();
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        message: 'Query parameter q is required',
+      });
+    }
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
+        success: false,
+        message: 'YouTube API key is not configured on the server',
+      });
+    }
+
+    // First, search for relevant videos (prefer normal-length videos, not Shorts)
+    const searchResponse = await axios.get('https://www.googleapis.com/youtube/v3/search', {
+      params: {
+        key: apiKey,
+        part: 'snippet',
+        q: query,
+        type: 'video',
+        maxResults: 5,
+        safeSearch: 'moderate',
+        videoDuration: 'medium', // exclude very short "Shorts"-style clips
+      },
+      timeout: 15000,
+    });
+
+    const items = Array.isArray(searchResponse.data?.items) ? searchResponse.data.items : [];
+    if (!items.length) {
+      return res.json({
+        success: true,
+        videos: [],
+      });
+    }
+
+    const ids = items.map((item) => item.id?.videoId).filter(Boolean);
+    const idParam = ids.join(',');
+
+    let durationsMap = new Map();
+    if (idParam) {
+      try {
+        const detailsResponse = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+          params: {
+            key: apiKey,
+            part: 'contentDetails',
+            id: idParam,
+          },
+          timeout: 15000,
+        });
+
+        const detailsItems = Array.isArray(detailsResponse.data?.items) ? detailsResponse.data.items : [];
+        durationsMap = new Map(
+          detailsItems.map((video) => [video.id, video.contentDetails?.duration])
+        );
+      } catch (detailsError) {
+        console.warn('[Analysis Videos] Failed to fetch video details', detailsError.message);
+      }
+    }
+
+    const videos = items.map((item) => {
+      const videoId = item.id?.videoId;
+      const snippet = item.snippet || {};
+      const isoDuration = durationsMap.get(videoId) || null;
+
+      return {
+        title: snippet.title || 'Video tutorial',
+        channel: snippet.channelTitle || 'YouTube',
+        duration: parseYouTubeDuration(isoDuration) || '',
+        thumbnailUrl:
+          snippet.thumbnails?.medium?.url ||
+          snippet.thumbnails?.high?.url ||
+          snippet.thumbnails?.default?.url ||
+          null,
+        url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : '',
+      };
+    });
+
+    // Extra filtering: keep only videos whose title matches at least one
+    // significant word from the query (to avoid unrelated suggestions).
+    const lowerQuery = query.toLowerCase();
+    const rawTokens = lowerQuery.split(/\s+/).filter(Boolean);
+    const stopwords = new Set(['the', 'and', 'or', 'for', 'with', 'that', 'this', 'issue', 'problem']);
+    const tokens = rawTokens.filter((t) => t.length > 3 && !stopwords.has(t));
+
+    let filteredVideos = videos;
+    if (tokens.length > 0) {
+      filteredVideos = videos.filter((video) => {
+        const title = (video.title || '').toLowerCase();
+        return tokens.some((token) => title.includes(token));
+      });
+
+      // If everything got filtered out, fall back to the original list
+      if (!filteredVideos.length) {
+        filteredVideos = videos;
+      }
+    }
+
+    return res.json({
+      success: true,
+      videos: filteredVideos,
+    });
+  } catch (error) {
+    console.error('[Analysis Videos] Failed to fetch YouTube videos', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch related videos. Please try again later.',
     });
   }
 });
