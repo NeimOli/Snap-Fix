@@ -32,6 +32,98 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
     _loadJobs();
   }
 
+  Future<void> _showCancelJobDialog(String jobId) async {
+    final reasonController = TextEditingController();
+    bool isSubmitting = false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Cancel job'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Please enter a reason for cancelling this job:'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: reasonController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Reason for cancellation',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Close'),
+                ),
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setState(() {
+                            isSubmitting = true;
+                          });
+                          try {
+                            await ApiClient.instance.post(
+                              '/api/jobs/$jobId/cancel',
+                              body: {'reason': reasonController.text.trim()},
+                              authenticated: true,
+                            );
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(true);
+                            }
+                          } on ApiException catch (e) {
+                            setState(() {
+                              isSubmitting = false;
+                            });
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.message)),
+                              );
+                            }
+                          } catch (e) {
+                            setState(() {
+                              isSubmitting = false;
+                            });
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to cancel job: $e')),
+                              );
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Cancel job'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _loadJobs();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job cancelled.')),
+        );
+      }
+    }
+  }
+
   Future<void> _reloadCurrentUser() async {
     try {
       await AuthService.instance.fetchCurrentUser();
@@ -367,7 +459,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
   Widget _buildJobRequestsTab(BuildContext context, ThemeData theme) {
     final requestedJobs = _jobs.where((job) {
       final status = job['status']?.toString();
-      return status == 'requested';
+      return status == 'requested' || status == 'accepted' || status == 'in_progress';
     }).toList();
 
     return RefreshIndicator(
@@ -726,14 +818,35 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
               ),
             )
           else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _jobs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final job = _jobs[index];
-                return _buildJobCard(context, job);
+            Builder(
+              builder: (context) {
+                final completedJobs = _jobs.where((job) {
+                  final status = job['status']?.toString();
+                  return status == 'completed';
+                }).toList();
+
+                if (completedJobs.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text(
+                      'No completed jobs yet. Once you finish jobs, they will show here.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: completedJobs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final job = completedJobs[index];
+                    return _buildJobCard(context, job);
+                  },
+                );
               },
             ),
         ],
@@ -1334,7 +1447,7 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                       child: const Text('Accept'),
                     ),
                   )
-                else if (rawStatus == 'accepted')
+                else if (rawStatus == 'accepted') ...[
                   Expanded(
                     child: ElevatedButton(
                       onPressed: _isUpdatingJob
@@ -1344,7 +1457,23 @@ class _ProviderDashboardScreenState extends State<ProviderDashboardScreen> {
                             },
                       child: const Text('Start Job'),
                     ),
-                  )
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                      onPressed: _isUpdatingJob
+                          ? null
+                          : () {
+                              _showCancelJobDialog(jobId);
+                            },
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                ]
                 else if (rawStatus == 'in_progress')
                   Expanded(
                     child: ElevatedButton(

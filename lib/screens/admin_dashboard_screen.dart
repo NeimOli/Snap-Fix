@@ -715,6 +715,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildUsersTab() {
+    final users = _users.where((user) {
+      final map = user as Map<String, dynamic>;
+      final role = (map['role'] ?? '').toString().toLowerCase();
+      return role == 'user';
+    }).toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -749,7 +755,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 child: CircularProgressIndicator(),
               ),
             )
-          else if (_users.isEmpty)
+          else if (users.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 40),
               child: Column(
@@ -761,7 +767,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ),
             )
           else
-            ..._users.map((user) => _buildUserCard(user as Map<String, dynamic>)).toList(),
+            ...users.map((user) => _buildUserCard(user as Map<String, dynamic>)).toList(),
         ],
       ),
     );
@@ -919,16 +925,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 controller: phoneController,
                 decoration: const InputDecoration(labelText: 'Phone Number'),
               ),
-              const SizedBox(height: 12),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Pro Member'),
-                value: isProMember,
-                onChanged: (value) {
-                  isProMember = value;
-                  (context as Element).markNeedsBuild();
-                },
-              ),
             ],
           ),
           actions: [
@@ -951,7 +947,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     final success = await AdminAuthService.updateUser(userId, {
       'fullName': nameController.text.trim(),
       'phone': phoneController.text.trim(),
-      'isProMember': isProMember,
     });
     if (!mounted) return;
 
@@ -1057,6 +1052,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   }
 
   Widget _buildProviderCard(Map<String, dynamic> user) {
+    final userId = (user['id'] ?? user['_id'] ?? '').toString();
     final name = user['fullName'] ?? user['name'] ?? 'Unknown Provider';
     final email = user['email'] ?? 'N/A';
     final phone = user['phone'] ?? 'Not provided';
@@ -1193,9 +1189,152 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'edit') {
+                _showEditProviderDialog(userId, name, email, phone, isPro);
+              } else if (value == 'delete') {
+                _confirmDeleteProvider(userId, name);
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: ListTile(
+                  leading: Icon(Icons.edit, size: 18),
+                  title: Text('Edit'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  leading: Icon(Icons.delete, size: 18, color: Colors.red),
+                  title: Text('Delete', style: TextStyle(color: Colors.red)),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ),
+            ],
+            icon: const Icon(Icons.more_vert, size: 18),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _showEditProviderDialog(
+    String userId,
+    String name,
+    String email,
+    String phone,
+    bool isPro,
+  ) async {
+    final nameController = TextEditingController(text: name);
+    final phoneController = TextEditingController(text: phone);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Edit Provider'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(email, style: const TextStyle(color: Colors.grey)),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Full Name'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneController,
+                decoration: const InputDecoration(labelText: 'Phone Number'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != true || _isPerformingUserAction) return;
+
+    setState(() => _isPerformingUserAction = true);
+    final success = await AdminAuthService.updateUser(userId, {
+      'fullName': nameController.text.trim(),
+      'phone': phoneController.text.trim(),
+    });
+    if (!mounted) return;
+
+    setState(() => _isPerformingUserAction = false);
+
+    if (success) {
+      await _loadUsers();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Provider updated successfully')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update provider')),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteProvider(String userId, String name) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Provider'),
+          content: Text('Delete $name? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true || _isPerformingUserAction) return;
+
+    setState(() => _isPerformingUserAction = true);
+    final success = await AdminAuthService.deleteUser(userId);
+    if (!mounted) return;
+    setState(() => _isPerformingUserAction = false);
+
+    if (success) {
+      await _loadUsers();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Provider deleted')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete provider')),
+      );
+    }
   }
 
   Widget _buildSettingsTab() {

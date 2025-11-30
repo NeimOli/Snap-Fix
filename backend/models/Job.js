@@ -56,6 +56,10 @@ const jobSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    cancelReason: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,

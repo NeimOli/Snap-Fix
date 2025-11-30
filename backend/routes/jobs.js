@@ -66,6 +66,45 @@ router.post('/', protect, async (req, res) => {
   }
 });
 
+// @route   POST /api/jobs/:id/cancel
+// @desc    Provider cancels a job with a reason
+// @access  Private (provider)
+router.post('/:id/cancel', protect, async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Allow cancelling only if not already completed or cancelled
+    if (job.status === 'completed' || job.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'This job cannot be cancelled.' });
+    }
+
+    const reason = (req.body && typeof req.body.reason === 'string') ? req.body.reason.trim() : '';
+    job.status = 'cancelled';
+    job.cancelReason = reason;
+
+    await job.save();
+
+    // When a job is cancelled, mark the related service as available again.
+    try {
+      if (job.service) {
+        await Service.findByIdAndUpdate(job.service, {
+          availability: 'Available now',
+        });
+      }
+    } catch (serviceError) {
+      console.error('[Jobs] Failed to update service availability on cancel:', serviceError);
+    }
+
+    res.json({ success: true, job });
+  } catch (error) {
+    console.error('[Jobs] Cancel job error:', error);
+    res.status(500).json({ success: false, message: 'Server error while cancelling job' });
+  }
+});
+
 // @route   POST /api/jobs/:id/rate
 // @desc    User rates a completed job and updates provider service rating
 // @access  Private (user)

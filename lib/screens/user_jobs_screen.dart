@@ -12,7 +12,11 @@ class UserJobsScreen extends StatefulWidget {
 }
 
 class _UserJobsScreenState extends State<UserJobsScreen> {
+  int? currentRating;
   bool _isLoading = true;
+  bool _isRefreshing = false;
+  bool _isLoadingMore = false;
+  bool _isRatingDialogShown = false;
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
 
@@ -23,22 +27,26 @@ class _UserJobsScreenState extends State<UserJobsScreen> {
   }
 
   Future<void> _loadJobs() async {
-    setState(() {
-      _isLoading = true;
+    if (!_isRefreshing) {
+      setState(() => _isLoading = true);
+      _isRatingDialogShown = false; // Reset flag when refreshing
       _error = null;
-    });
+    }
 
     try {
       final response = await ApiClient.instance.get(
         '/api/jobs/user',
         authenticated: true,
       );
-      final list = (response['jobs'] as List<dynamic>? ?? <dynamic>[])
-          .map((e) => (e as Map<String, dynamic>))
+      final list = ((response['jobs'] as List<dynamic>?) ?? <dynamic>[])
+          .map<Map<String, dynamic>>((e) => e as Map<String, dynamic>)
           .toList();
       setState(() {
-        _jobs = list;
         _isLoading = false;
+        _isLoadingMore = false;
+        _isRefreshing = false;
+        _showRatingDialogIfNeeded();
+        _jobs = list;
       });
     } catch (e) {
       setState(() {
@@ -75,6 +83,104 @@ class _UserJobsScreenState extends State<UserJobsScreen> {
         const SnackBar(content: Text('Could not start a phone call.')),
       );
     }
+  }
+
+  void _showRatingDialogIfNeeded() {
+    if (_isRatingDialogShown || !mounted) return;
+    
+    // Find the first completed job without a rating
+    try {
+      final unratedJob = _jobs.firstWhere(
+        (job) {
+          final status = job['status']?.toString().toLowerCase();
+          final hasRating = (job['rating'] is num) && (job['rating'] ?? 0) > 0;
+          return status == 'completed' && !hasRating;
+        },
+      );
+
+      if (unratedJob != null) {
+        _isRatingDialogShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          showDialog(
+            context: context,
+            barrierDismissible: false, // User must rate to dismiss
+            builder: (context) => _buildRatingDialog(
+              jobId: unratedJob['_id'].toString(),
+              providerName: unratedJob['provider']?['name']?.toString() ?? 'the provider',
+            ),
+          );
+        });
+      }
+    } catch (e) {
+      // No unrated jobs found or other error
+      debugPrint('No unrated jobs or error: $e');
+    }
+  }
+
+  Widget _buildRatingDialog({
+    required String jobId,
+    required String providerName,
+  }) {
+    return AlertDialog(
+      title: const Text('Rate your experience'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('How would you rate your service with $providerName?'),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (index) {
+              return IconButton(
+                icon: Icon(
+                  Icons.star,
+                  size: 36,
+                  color: (index < (currentRating ?? 0)) ? Colors.amber : Colors.grey,
+                ),
+                onPressed: () {
+                  setState(() {
+                    currentRating = index + 1;
+                  });
+                },
+              );
+            }),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Skip'),
+        ),
+        FilledButton(
+          onPressed: currentRating == null
+              ? null
+              : () async {
+                  try {
+                    await ApiClient.instance.post(
+                      '/api/jobs/$jobId/rate',
+                      body: {'rating': currentRating},
+                      authenticated: true,
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Thanks for your rating!')),
+                      );
+                      Navigator.pop(context);
+                      _loadJobs(); // Refresh the list
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to submit rating. Please try again.')),
+                      );
+                    }
+                  }
+                },
+          child: const Text('Submit'),
+        ),
+      ],
+    );
   }
 
   @override
@@ -119,7 +225,8 @@ class _UserJobsScreenState extends State<UserJobsScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final job = _jobs[index];
-                          final status = job['status']?.toString() ?? '';
+                          final rawStatus = job['status']?.toString() ?? '';
+                          final status = rawStatus;
                           final isActive = _isActiveStatus(status);
                           final description = job['description']?.toString() ?? '';
                           final service = job['service'] as Map<String, dynamic>?;
@@ -184,7 +291,9 @@ class _UserJobsScreenState extends State<UserJobsScreen> {
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
-                                        status,
+                                        rawStatus.toLowerCase() == 'requested'
+                                            ? 'Waiting for provider to accept'
+                                            : status,
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,

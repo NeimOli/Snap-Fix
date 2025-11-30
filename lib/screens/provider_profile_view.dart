@@ -4,8 +4,18 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
 
-class ProviderProfileView extends StatelessWidget {
+class ProviderProfileView extends StatefulWidget {
   const ProviderProfileView({super.key});
+
+  @override
+  State<ProviderProfileView> createState() => _ProviderProfileViewState();
+}
+
+class _ProviderProfileViewState extends State<ProviderProfileView> {
+  bool _hasPendingRequestedJob = false;
+  bool _isCheckingJobs = false;
+  bool _pendingCheckStarted = false;
+  String? _pendingJobId;
 
   Future<void> _callProvider(BuildContext context, String? phone) async {
     if (phone == null || phone.trim().isEmpty) {
@@ -31,13 +41,136 @@ class ProviderProfileView extends StatelessWidget {
     }
   }
 
-  Future<void> _showRequestJobDialog(BuildContext context, Map<String, dynamic> provider) async {
+  Future<void> _showCancelRequestDialog(Map<String, dynamic> provider) async {
+    if (_pendingJobId == null) return;
+
+    // First, show a confirmation dialog
+    final shouldProceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Request?'),
+        content: const Text('Are you sure you want to cancel this service request?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No, Keep It'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldProceed != true) return;
+
+    // Then show the reason input dialog
+    final reasonController = TextEditingController();
+    bool isSubmitting = false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Reason for Cancellation'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Help us improve by sharing why you\'re canceling:'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: reasonController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Reason (optional)',
+                      filled: true,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(dialogContext, false),
+                  child: const Text('Back'),
+                ),
+                FilledButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setState(() {
+                            isSubmitting = true;
+                          });
+                          try {
+                            await ApiClient.instance.post(
+                              '/api/jobs/$_pendingJobId/cancel',
+                              body: {'reason': reasonController.text.trim()},
+                              authenticated: true,
+                            );
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(true);
+                            }
+                          } on ApiException catch (e) {
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(content: Text(e.message)),
+                              );
+                            }
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(false);
+                            }
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                const SnackBar(content: Text('Failed to cancel request. Please try again.')),
+                              );
+                            }
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(false);
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Confirm Cancel'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      // Refresh the pending job status
+      await _checkPendingJobForProvider(provider);
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request cancelled successfully'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<bool> _showRequestJobDialog(BuildContext context, Map<String, dynamic> provider) async {
     final descriptionController = TextEditingController();
     final timeController = TextEditingController();
     final formKey = GlobalKey<FormState>();
     bool isSubmitting = false;
+    TimeOfDay? selectedTime;
 
-    await showDialog(
+    final sent = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -66,10 +199,25 @@ class ProviderProfileView extends StatelessWidget {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: timeController,
+                      readOnly: true,
                       decoration: const InputDecoration(
                         labelText: 'Preferred time (optional)',
                         border: OutlineInputBorder(),
+                        hintText: 'Select time',
                       ),
+                      onTap: () async {
+                        final now = TimeOfDay.now();
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: selectedTime ?? now,
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            selectedTime = picked;
+                            timeController.text = picked.format(context);
+                          });
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -112,7 +260,7 @@ class ProviderProfileView extends StatelessWidget {
                             );
 
                             if (dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
+                              Navigator.of(dialogContext).pop(true);
                             }
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -160,6 +308,60 @@ class ProviderProfileView extends StatelessWidget {
         );
       },
     );
+
+    return sent == true;
+  }
+
+  Future<void> _checkPendingJobForProvider(Map<String, dynamic> provider) async {
+    if (_isCheckingJobs) return;
+    setState(() {
+      _isCheckingJobs = true;
+    });
+
+    try {
+      final response = await ApiClient.instance.get(
+        '/api/jobs/user',
+        authenticated: true,
+      );
+
+      final jobs = (response['jobs'] as List<dynamic>? ?? <dynamic>[]);
+      final providerEmail = provider['email']?.toString();
+      final providerId = provider['_id']?.toString();
+
+      bool hasPending = false;
+      String? pendingJobId;
+      for (final job in jobs) {
+        final map = job as Map<String, dynamic>;
+        final status = map['status']?.toString();
+        if (status == 'requested') {
+          final jobProvider = map['provider'] as Map<String, dynamic>?;
+          final jobProviderEmail = jobProvider?['email']?.toString();
+          final jobProviderId = jobProvider?['_id']?.toString();
+
+          if ((providerEmail != null && providerEmail.isNotEmpty && jobProviderEmail == providerEmail) ||
+              (providerId != null && providerId.isNotEmpty && jobProviderId == providerId)) {
+            hasPending = true;
+            pendingJobId = map['_id']?.toString();
+            break;
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _hasPendingRequestedJob = hasPending;
+          _pendingJobId = pendingJobId;
+        });
+      }
+    } catch (_) {
+      // ignore errors here, just don't block the UI
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingJobs = false;
+        });
+      }
+    }
   }
 
   @override
@@ -191,6 +393,11 @@ class ProviderProfileView extends StatelessWidget {
     final String? phone = provider['phone']?.toString();
     final List<String> services =
         (provider['services'] as List?)?.map((e) => e.toString()).toList() ?? const [];
+
+    if (!_pendingCheckStarted) {
+      _pendingCheckStarted = true;
+      _checkPendingJobForProvider(provider);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -384,11 +591,31 @@ class ProviderProfileView extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => _showRequestJobDialog(context, provider),
+                onPressed: _hasPendingRequestedJob
+                    ? null
+                    : () async {
+                        final sent = await _showRequestJobDialog(context, provider);
+                        if (sent) {
+                          await _checkPendingJobForProvider(provider);
+                        }
+                      },
                 icon: const Icon(Icons.assignment_outlined),
-                label: const Text('Request Job'),
+                label: Text(_hasPendingRequestedJob ? 'Request pending' : 'Request Job'),
               ),
             ),
+            if (_hasPendingRequestedJob && _pendingJobId != null) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => _showCancelRequestDialog(provider),
+                  child: const Text(
+                    'Cancel request',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
