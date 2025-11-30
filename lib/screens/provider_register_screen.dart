@@ -99,7 +99,7 @@ class _ProviderRegisterScreenState extends State<ProviderRegisterScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () {
-            context.go('/StartPage');
+            context.go('/start');
           },
         ),
         title: const Text('Sign Up'),
